@@ -10,7 +10,8 @@ import habana_frameworks.torch as htorch
 @dataclass
 class HPUDPMetadata:
     hidden_states_across_dp: torch.Tensor
-    router_logits_across_dp: torch.Tensor
+    topk_ids_across_dp: torch.Tensor
+    topk_weights_across_dp: torch.Tensor
     local_hidden_states: torch.Tensor
 
     @staticmethod
@@ -27,35 +28,37 @@ class HPUDPMetadata:
         dtype = vllm_config.model_config.dtype
         device = current_platform.device_type
 
-        num_expert_names = [
-            "moe_num_experts",  # Dbrx
-            "num_experts",  # Jamba
-            "n_routed_experts",  # DeepSeek
-            "num_local_experts",  # Mixtral
-        ]
-        num_experts = 0
-        for name in num_expert_names:
-            num_experts = getattr(vllm_config.model_config.hf_text_config, name, 0)
-            if num_experts > 0:
-                break
-        assert num_experts > 0, \
-            "No expert found in the model config. Please check the model config."
+        num_experts_per_tok = 0
+        num_experts_per_tok = getattr(vllm_config.model_config.hf_text_config, "num_experts_per_tok", 0)
+        assert num_experts_per_tok > 0, ("No expert found in the model config. Please check the model config.")
+        if hasattr(vllm_config.model_config.hf_text_config, "quantization_config"):
+            quantization_config = (vllm_config.model_config.hf_text_config.quantization_config)
+            activation_scheme = quantization_config["activation_scheme"]
+        else:
+            activation_scheme = "none"
+
+        hidden_states_dtype = (torch.float8_e4m3fn if activation_scheme == "static" else dtype)
 
         hidden_states_across_dp = torch.empty(
             (num_tokens_across_dp, hidden_size),
+            dtype=hidden_states_dtype,
+            device=device,
+        )
+        topk_ids_across_dp = torch.empty(
+            (num_tokens_across_dp, num_experts_per_tok),
+            dtype=torch.int64,
+            device=device,
+        )
+        topk_weights_across_dp = torch.empty(
+            (num_tokens_across_dp, num_experts_per_tok),
             dtype=dtype,
             device=device,
         )
-        router_logits_across_dp = torch.empty(
-            (num_tokens_across_dp, num_experts),
-            dtype=dtype,
-            device=device,
-        )
-        local_num_tokens = (num_tokens //
-                            tp_size) if vllm_config.parallel_config.use_sequence_parallel_moe else num_tokens
+        local_num_tokens = ((num_tokens //
+                             tp_size) if vllm_config.parallel_config.use_sequence_parallel_moe else num_tokens)
         local_hidden_states = torch.empty((local_num_tokens, hidden_size), dtype=dtype, device=device)
 
-        return HPUDPMetadata(hidden_states_across_dp, router_logits_across_dp, local_hidden_states)
+        return HPUDPMetadata(hidden_states_across_dp, topk_ids_across_dp, topk_weights_across_dp, local_hidden_states)
 
 
 _hpu_dp_metadata: Optional[HPUDPMetadata] = None
