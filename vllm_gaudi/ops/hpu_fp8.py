@@ -14,6 +14,7 @@ from vllm.model_executor.layers.quantization.fp8 import (Fp8LinearMethod as Orig
                                                          Fp8Config)
 import vllm_gaudi.extension.ops as hpu_ops
 from vllm_gaudi.extension.ops import (VllmMixtureOfExpertsOpFP8PerChannel, VllmMixtureOfExpertsOpFP8)
+from vllm_gaudi.v1.worker.hpu_dp_utils import get_hpu_dp_metadata
 
 
 class Fp8LinearMethod(OrigFp8LinearMethod):
@@ -245,8 +246,6 @@ class HPUFp8MoEMethod(Fp8MoEMethod):
             topk_weights, topk_ids = torch.topk(topk_weights, top_k, dim=-1)
             topk_weights /= topk_weights.sum(dim=-1, keepdim=True)
             topk_weights = topk_weights.to(x.dtype)
-        topk_ids = topk_ids.view(*x.shape[:-1], -1)
-        topk_weights = topk_weights.view(*x.shape[:-1], -1)
         if self.quant_config.activation_scheme == "static":
             x_scale = layer.w13_input_scale.data
             if layer.dp_size == 1:
@@ -254,6 +253,22 @@ class HPUFp8MoEMethod(Fp8MoEMethod):
             else:
                 x_fp8 = x
 
+            if layer.dp_size > 1:
+                topk_ids_across_dp = get_hpu_dp_metadata().topk_ids_across_dp
+                torch.distributed.all_gather_into_tensor(
+                    topk_ids_across_dp,
+                    topk_ids,
+                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
+                topk_ids = topk_ids_across_dp
+
+                topk_weights_across_dp = get_hpu_dp_metadata().topk_weights_across_dp
+                torch.distributed.all_gather_into_tensor(
+                    topk_weights_across_dp,
+                    topk_weights,
+                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
+                topk_weights = topk_weights_across_dp
+            topk_ids = topk_ids.view(*x.shape[:-1], -1)
+            topk_weights = topk_weights.view(*x.shape[:-1], -1)
             batched_tokens = x.shape[0]
             kwargs = {}
             if self.enable_moe_chunk:
@@ -310,6 +325,8 @@ class HPUFp8MoEMethod(Fp8MoEMethod):
                     **kwargs)
             return final_hidden_states.view(-1, x.shape[1])
         else:
+            topk_ids = topk_ids.view(*x.shape[:-1], -1)
+            topk_weights = topk_weights.view(*x.shape[:-1], -1)
             output = layer.moe_op(
                 x,
                 topk_ids.to(torch.int64),

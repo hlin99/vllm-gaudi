@@ -2,8 +2,10 @@ from typing import Callable, Optional, Union
 
 import torch
 import vllm
+from vllm.distributed import get_dp_group, get_ep_group
 from vllm.model_executor.layers.fused_moe.layer import (FusedMoE, UnquantizedFusedMoEMethod)
 from vllm_gaudi.extension.ops import (VllmMixtureOfExpertsOp)
+from vllm_gaudi.v1.worker.hpu_dp_utils import get_hpu_dp_metadata
 
 
 @UnquantizedFusedMoEMethod.register_oot
@@ -70,6 +72,21 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_weights, topk_ids = torch.topk(topk_weights, top_k, dim=-1)
             topk_weights /= topk_weights.sum(dim=-1, keepdim=True)
             topk_weights = topk_weights.to(x.dtype)
+
+            if layer.dp_size > 1:
+                topk_ids_across_dp = get_hpu_dp_metadata().topk_ids_across_dp
+                torch.distributed.all_gather_into_tensor(
+                    topk_ids_across_dp,
+                    topk_ids,
+                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
+                topk_ids = topk_ids_across_dp
+
+                topk_weights_across_dp = get_hpu_dp_metadata().topk_weights_across_dp
+                torch.distributed.all_gather_into_tensor(
+                    topk_weights_across_dp,
+                    topk_weights,
+                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
+                topk_weights = topk_weights_across_dp
         topk_ids = topk_ids.view(*x.shape[:-1], -1)
         topk_weights = topk_weights.view(*x.shape[:-1], -1)
 
