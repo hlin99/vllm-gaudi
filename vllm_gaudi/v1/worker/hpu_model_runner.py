@@ -84,6 +84,8 @@ from vllm_gaudi.extension.ops import LoraMask as LoraMask
 from vllm.model_executor.models.llama_eagle3 import Eagle3LlamaForCausalLM
 from vllm.distributed.kv_transfer.kv_connector.utils import copy_kv_blocks
 
+import habana_frameworks.torch as ht
+
 if TYPE_CHECKING:
     import xgrammar as xgr
     import xgrammar.kernels.apply_token_bitmask_inplace_torch_compile as xgr_torch_compile  # noqa: E501
@@ -2906,6 +2908,15 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         scheduler_output: "SchedulerOutput",
         warmup_mode: bool = False,
     ) -> Union[ModelRunnerOutput, AsyncModelRunnerOutput]:
+        if self.debug_fwd:
+            e0 = ht.hpu.Event(enable_timing=True)
+            e1 = ht.hpu.Event(enable_timing=True)
+            e2 = ht.hpu.Event(enable_timing=True)
+            e3 = ht.hpu.Event(enable_timing=True)
+            e4 = ht.hpu.Event(enable_timing=True)
+            e5 = ht.hpu.Event(enable_timing=True)
+            e6 = ht.hpu.Event(enable_timing=True)
+            e0.record()
         if self.unified_attn:
             return self.unified_execute_model(scheduler_output, warmup_mode)
         # NOTE(kzawora): Since scheduler doesn't differentiate between prefills
@@ -3036,6 +3047,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             structured_output = True
         if self.use_async_scheduling:
             invalid_req_indices = []
+        if self.debug_fwd:
+            e1.record()
         ######################### PREFILLS #########################
         if num_prefills > 0:
             htorch.core.mark_step()
@@ -3141,6 +3154,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             if self.is_driver_worker and self.profiler.enabled:
                 self.profiler_counter_helper.reset_prompt_seq_stats()
 
+        if self.debug_fwd:
+            e2.record()
         if num_pad_prefill_batch_across_dp > 0:
             for idx, (req_id, prompt_len, token_ids, position_ids, attn_metadata, logits_indices,
                       logits_requests) in enumerate(zip(*shallow_tuple(dummy_prefill_input_data_batches_across_dp))):
@@ -3157,6 +3172,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     warmup_mode=warmup_mode)
                 htorch.core.mark_step()
 
+        if self.debug_fwd:
+            e3.record()
         ######################### DECODES #########################
         # Decodes run as one single batch with [padded_decode_bs, 1]
         if num_decodes > 0:
@@ -3243,6 +3260,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                                                                        None,
                                                                        warmup_mode=warmup_mode)
             htorch.core.mark_step()
+        if self.debug_fwd:
+            e4.record()
 
         if structured_output:
             # Scheduler places cached before prompt
@@ -3316,6 +3335,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                                                                                             num_tokens]
                     start_idx += num_tokens
 
+        if self.debug_fwd:
+            e5.record()
         ################## RETURN ##################
         # NOTE(kzawora): idk what happens if part of batch doesn't have logprobs
 
@@ -3378,6 +3399,24 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
 
         if not warmup_mode:
             finished_sending, finished_recving = (self.get_finished_kv_transfers(scheduler_output))
+
+        if self.debug_fwd:
+            e6.record()
+            torch.hpu.synchronize()
+            self.debug_fwd(
+                f"num_prefills {num_prefills}, "
+                f"prefill_req_ids {pd_info.prompt_req_ids}, "
+                f"num_decodes {num_decodes}, "
+                f"decode_req_ids {pd_info.decode_req_ids}, "
+                f"num_pad_prefill_batch_across_dp {num_pad_prefill_batch_across_dp}, "
+                f"dummy_decode_input_data_across_dp {True if dummy_decode_input_data_across_dp is not None else None}, "
+                f"prepare_data {e0.elapsed_time(e1)}, "
+                f"prefill {e1.elapsed_time(e2)}, "
+                f"dummy prefill {e2.elapsed_time(e3)}, "
+                f"decode {e3.elapsed_time(e4)}, "
+                f"sampling {e4.elapsed_time(e5)}, "
+                f"post processing {e5.elapsed_time(e6)}")
+
         if self.use_async_scheduling:
             model_runner_output = ModelRunnerOutput(
                 req_ids=req_ids_output_copy,  # CHECK
