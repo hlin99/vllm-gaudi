@@ -64,7 +64,8 @@ def install_system_dependencies():
         "automake",
         "meson",
         "libtool",
-        "libtool-bin"
+        "libtool-bin",
+        "libaio-dev"
     ]
     run_command(['apt-get', 'update'])
     run_command(['apt-get', 'install', '-y'] + apt_packages)
@@ -126,6 +127,8 @@ def build_and_install_prerequisites(args):
     if not os.path.exists(NIXL_DIR):
         run_command(['git', 'clone', NIXL_REPO_URL, NIXL_DIR])
 
+    nixl_source_path = os.path.abspath(NIXL_DIR)
+    run_command(['git', 'checkout', 'release/0.6.0'], cwd=nixl_source_path)
     build_env = os.environ.copy()
     build_env['PKG_CONFIG_PATH'] = os.path.join(ucx_install_path, 'lib', 'pkgconfig')
     ucx_lib_path = os.path.join(ucx_install_path, 'lib')
