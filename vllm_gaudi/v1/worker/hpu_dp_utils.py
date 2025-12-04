@@ -3,6 +3,7 @@ from contextlib import contextmanager
 from vllm.config import VllmConfig
 from dataclasses import dataclass
 from typing import Optional
+from vllm.distributed import get_dp_group, get_ep_group
 from vllm.platforms import current_platform
 import habana_frameworks.torch as htorch
 
@@ -104,3 +105,25 @@ def set_hpu_dp_metadata(
 def get_hpu_dp_metadata() -> Optional[HPUDPMetadata]:
     """Get the current HPU DP metadata."""
     return _hpu_dp_metadata
+
+
+def dispatch_tensor(input, output: torch.Tensor | None = None, is_sequence_parallel: bool = False) -> torch.Tensor:
+    assert get_dp_group() is not None
+    assert input.dim() == 2, "Input must be 2D"
+
+    if output is None:
+        # create output tensor
+        input_size = input.size()
+        # Allocate output tensor.
+        output_size = list(input_size)
+        if is_sequence_parallel:
+            # if sequence parallel enabled, input was already being chunked by sp_size
+            output_size[0] *= get_ep_group().world_size
+        else:
+            output_size[0] *= get_dp_group().world_size
+        output = torch.empty(output_size, dtype=input.dtype, device=input.device)
+
+    torch.distributed.all_gather_into_tensor(
+        output, input, group=get_ep_group().device_group if is_sequence_parallel else get_dp_group().device_group)
+
+    return output

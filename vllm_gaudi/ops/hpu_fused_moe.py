@@ -2,12 +2,11 @@ from typing import Callable, Optional, Union
 
 import torch
 import vllm
-from vllm.distributed import get_dp_group, get_ep_group
 from vllm.model_executor.layers.batch_invariant import vllm_is_batch_invariant
 from vllm.model_executor.layers.fused_moe.fused_moe import GroupedTopk
 from vllm.model_executor.layers.fused_moe.layer import (FusedMoE, UnquantizedFusedMoEMethod)
 from vllm_gaudi.extension.ops import (VllmMixtureOfExpertsOp)
-from vllm_gaudi.v1.worker.hpu_dp_utils import get_hpu_dp_metadata
+from vllm_gaudi.v1.worker.hpu_dp_utils import dispatch_tensor, get_hpu_dp_metadata
 
 
 @GroupedTopk.register_oot
@@ -76,7 +75,7 @@ class HPUGroupedTopk(GroupedTopk):
 
         if self.routed_scaling_factor != 1.0:
             topk_weights = topk_weights * self.routed_scaling_factor
-        return topk_weights.to(torch.bfloat16), topk_ids.to(torch.int64)
+        return topk_weights.to(hidden_states.dtype), topk_ids.to(torch.int64)
 
 
 @UnquantizedFusedMoEMethod.register_oot
@@ -145,30 +144,26 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_weights /= topk_weights.sum(dim=-1, keepdim=True)
             topk_weights = topk_weights.to(x.dtype)
 
-            if layer.dp_size > 1:
-                topk_ids_across_dp = get_hpu_dp_metadata().topk_ids_across_dp
-                torch.distributed.all_gather_into_tensor(
-                    topk_ids_across_dp,
-                    topk_ids,
-                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
-                topk_ids = topk_ids_across_dp
+        if layer.dp_size > 1:
+            hidden_states_across_dp = get_hpu_dp_metadata().hidden_states_across_dp
+            x = dispatch_tensor(x, hidden_states_across_dp, layer.is_sequence_parallel)
 
-                topk_weights_across_dp = get_hpu_dp_metadata().topk_weights_across_dp
-                torch.distributed.all_gather_into_tensor(
-                    topk_weights_across_dp,
-                    topk_weights,
-                    group=get_ep_group().device_group if layer.is_sequence_parallel else get_dp_group().device_group)
-                topk_weights = topk_weights_across_dp
+            topk_ids_across_dp = get_hpu_dp_metadata().topk_ids_across_dp
+            topk_ids = dispatch_tensor(topk_ids, topk_ids_across_dp, layer.is_sequence_parallel)
+
+            topk_weights_across_dp = get_hpu_dp_metadata().topk_weights_across_dp
+            topk_weights = dispatch_tensor(topk_weights, topk_weights_across_dp, layer.is_sequence_parallel)
+
         topk_ids = topk_ids.view(*x.shape[:-1], -1)
         topk_weights = topk_weights.view(*x.shape[:-1], -1)
 
         return layer.moe_op(
             x,
-            topk_ids.to(torch.int64),
-            topk_weights.to(x.dtype),
+            topk_ids,
+            topk_weights,
             permuted_weights=True,
             activation=activation,
-        ).view(*input_shape)
+        ).view(*(x.size(0), *input_shape[1:]))
 
 
 def patched_fused_moe_forward(
