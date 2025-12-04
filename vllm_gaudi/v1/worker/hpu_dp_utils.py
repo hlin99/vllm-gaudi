@@ -1,4 +1,5 @@
 import torch
+import os
 from contextlib import contextmanager
 from vllm.config import VllmConfig
 from dataclasses import dataclass
@@ -45,6 +46,9 @@ class HPUDPMetadata:
 
         hidden_states_dtype = (torch.float8_e4m3fn if activation_scheme == "static" else dtype)
 
+        quant_config = os.getenv("QUANT_CONFIG", None) is not None
+        is_quant_with_inc = vllm_config.model_config.quantization == "inc" or quant_config
+        hidden_states_dtype = (torch.float8_e4m3fn if is_quant_with_inc else hidden_states_dtype)
         hidden_states_across_dp = torch.empty(
             (num_tokens_across_dp, hidden_size),
             dtype=hidden_states_dtype,
@@ -127,3 +131,8 @@ def dispatch_tensor(input, output: torch.Tensor | None = None, is_sequence_paral
         output, input, group=get_ep_group().device_group if is_sequence_parallel else get_dp_group().device_group)
 
     return output
+
+
+def dispatch_hidden_states(input, is_sequence_parallel):
+    hidden_states_across_dp = get_hpu_dp_metadata().hidden_states_across_dp
+    return dispatch_tensor(input, hidden_states_across_dp, is_sequence_parallel)

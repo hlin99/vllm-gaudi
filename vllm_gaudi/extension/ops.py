@@ -453,7 +453,12 @@ class MoeMatmul(torch.nn.Module):
 
 class VllmMixtureOfExpertsOp(torch.nn.Module):
 
-    def __init__(self, global_num_experts: int, num_total_experts, experts_min: int = 0, experts_max: int = 8):
+    def __init__(self,
+                 global_num_experts: int,
+                 num_total_experts,
+                 experts_min: int = 0,
+                 experts_max: int = 8,
+                 dispatch_fn: Callable[[torch.Tensor], torch.Tensor] = None):
         super().__init__()
         self.w13_list = torch.nn.ModuleList([MoeMatmul() for _ in range(num_total_experts)])
         self.w2_list = torch.nn.ModuleList([MoeMatmul() for _ in range(num_total_experts)])
@@ -461,6 +466,7 @@ class VllmMixtureOfExpertsOp(torch.nn.Module):
         self.num_experts = num_total_experts
         self.experts_min = experts_min
         self.experts_max = experts_max
+        self.dispatch_func = dispatch_fn
 
         if MAX_EXPERTS_PER_SLICE > 0:
             max_expert_per_slice = MAX_EXPERTS_PER_SLICE
@@ -486,6 +492,10 @@ class VllmMixtureOfExpertsOp(torch.nn.Module):
         else:
             kwargs = {}
         return kwargs
+
+    def _get_dispatch_func(self):
+        fn = self.dispatch_func
+        return fn
 
     def forward(self, hidden_states, expert_routing_table, router_weights, permuted_weights=True, activation="silu"):
         tokens_num, _ = hidden_states.shape
@@ -909,7 +919,12 @@ class MoeFP8Matmul(torch.nn.Module):
 
 class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
 
-    def __init__(self, global_num_experts: int, num_experts: int, experts_min: int = 0, experts_max: int = 8):
+    def __init__(self,
+                 global_num_experts: int,
+                 num_experts: int,
+                 experts_min: int = 0,
+                 experts_max: int = 8,
+                 dispatch_fn: Callable[[torch.Tensor], torch.Tensor] = None):
         super().__init__()
         self.w13_list = torch.nn.ModuleList([MoeFP8Matmul() for _ in range(num_experts)])
         self.w2_list = torch.nn.ModuleList([MoeFP8Matmul() for _ in range(num_experts)])
@@ -926,6 +941,7 @@ class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
                 else self.num_experts // max_expert_per_slice
         self.num_expert_per_group = self.num_experts // self.moe_n_slice
         self.enable_moe_chunk = get_config().moe_chunk
+        self.dispatch_func = dispatch_fn
 
     def _get_extra_kwargs(self, tokens_num: int):
         if self.enable_moe_chunk:
@@ -942,6 +958,10 @@ class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
         else:
             kwargs = {}
         return kwargs
+
+    def _get_dispatch_func(self):
+        fn = self.dispatch_func
+        return fn
 
     def forward(
         self,
@@ -976,18 +996,16 @@ class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
             w2_list_slice = w2_list[i * self.num_expert_per_group:(i + 1) * self.num_expert_per_group]
             min_expert = self.experts_min + i * self.num_expert_per_group
             max_expert = min_expert + self.num_expert_per_group - 1
-            slice_final_hidden_states = torch.ops.hpu.mixture_of_experts(
-                hidden_states=x,
-                expert_routing_table=topk_ids,
-                router_weights=topk_weights,
-                w12=w13_list_slice,
-                w3=w2_list_slice,
-                permuted_weights=permuted_weights,
-                activation=activation,
-                experts_min=min_expert,
-                experts_max=max_expert,
-                **kwargs
-            )
+            slice_final_hidden_states = torch.ops.hpu.mixture_of_experts(hidden_states=x,
+                                                                         expert_routing_table=topk_ids,
+                                                                         router_weights=topk_weights,
+                                                                         w12=w13_list_slice,
+                                                                         w3=w2_list_slice,
+                                                                         permuted_weights=permuted_weights,
+                                                                         activation=activation,
+                                                                         experts_min=min_expert,
+                                                                         experts_max=max_expert,
+                                                                         **kwargs)
             htorch.core.mark_step()
             if i == 0:
                 final_hidden_states = slice_final_hidden_states
@@ -998,7 +1016,12 @@ class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
 
 class VllmMixtureOfExpertsOpFP8PerChannel(torch.nn.Module):
 
-    def __init__(self, global_num_experts: int, num_experts: int, experts_min: int = 0, experts_max: int = 8):
+    def __init__(self,
+                 global_num_experts: int,
+                 num_experts: int,
+                 experts_min: int = 0,
+                 experts_max: int = 8,
+                 dispatch_fn: Callable[[torch.Tensor], torch.Tensor] = None):
         super().__init__()
         self.w13_list = torch.nn.ModuleList([MoeFP8Matmul() for _ in range(num_experts)])
         self.w2_list = torch.nn.ModuleList([MoeFP8Matmul() for _ in range(num_experts)])
@@ -1010,6 +1033,7 @@ class VllmMixtureOfExpertsOpFP8PerChannel(torch.nn.Module):
         self.experts_min = experts_min
         self.experts_max = experts_max
         self.enable_moe_chunk = get_config().moe_chunk
+        self.dispatch_func = dispatch_fn
 
     def _get_extra_kwargs(self, tokens_num: int):
         if self.enable_moe_chunk:
@@ -1026,6 +1050,10 @@ class VllmMixtureOfExpertsOpFP8PerChannel(torch.nn.Module):
         else:
             kwargs = {}
         return kwargs
+
+    def _get_dispatch_func(self):
+        fn = self.dispatch_func
+        return fn
 
     def forward(
         self,

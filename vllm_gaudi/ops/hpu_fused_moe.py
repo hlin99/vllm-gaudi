@@ -1,3 +1,5 @@
+import os
+from functools import partial
 from typing import Callable, Optional, Union
 
 import torch
@@ -6,7 +8,7 @@ from vllm.model_executor.layers.batch_invariant import vllm_is_batch_invariant
 from vllm.model_executor.layers.fused_moe.fused_moe import GroupedTopk
 from vllm.model_executor.layers.fused_moe.layer import (FusedMoE, UnquantizedFusedMoEMethod)
 from vllm_gaudi.extension.ops import (VllmMixtureOfExpertsOp)
-from vllm_gaudi.v1.worker.hpu_dp_utils import dispatch_tensor, get_hpu_dp_metadata
+from vllm_gaudi.v1.worker.hpu_dp_utils import dispatch_hidden_states, dispatch_tensor, get_hpu_dp_metadata
 
 
 @GroupedTopk.register_oot
@@ -85,6 +87,7 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         torch.hpu.synchronize()
+        self.quant_config = os.getenv("QUANT_CONFIG", None) is not None
 
     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
         super().process_weights_after_loading(layer)
@@ -93,11 +96,18 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
         ep_shift = layer.ep_rank * num_experts
 
         experts_min, experts_max = ep_shift, num_experts + ep_shift - 1
+
+        if layer.dp_size > 1:
+            dispatch_fn = partial(dispatch_hidden_states, is_sequence_parallel=layer.is_sequence_parallel)
+        else:
+            dispatch_fn = None
+
         layer.moe_op = VllmMixtureOfExpertsOp(
             layer.global_num_experts,
             num_experts,
             experts_min,
             experts_max,
+            dispatch_fn,
         )
 
         for expert_id in range(layer.local_num_experts):
@@ -145,8 +155,9 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_weights = topk_weights.to(x.dtype)
 
         if layer.dp_size > 1:
-            hidden_states_across_dp = get_hpu_dp_metadata().hidden_states_across_dp
-            x = dispatch_tensor(x, hidden_states_across_dp, layer.is_sequence_parallel)
+            if not (layer.vllm_config.model_config.quantization == "inc" or self.quant_config):
+                hidden_states_across_dp = get_hpu_dp_metadata().hidden_states_across_dp
+                x = dispatch_tensor(x, hidden_states_across_dp, layer.is_sequence_parallel)
 
             topk_ids_across_dp = get_hpu_dp_metadata().topk_ids_across_dp
             topk_ids = dispatch_tensor(topk_ids, topk_ids_across_dp, layer.is_sequence_parallel)
@@ -154,16 +165,17 @@ class HPUUnquantizedFusedMoEMethod(UnquantizedFusedMoEMethod):
             topk_weights_across_dp = get_hpu_dp_metadata().topk_weights_across_dp
             topk_weights = dispatch_tensor(topk_weights, topk_weights_across_dp, layer.is_sequence_parallel)
 
-        topk_ids = topk_ids.view(*x.shape[:-1], -1)
-        topk_weights = topk_weights.view(*x.shape[:-1], -1)
+        topk_ids = topk_ids.view(-1, topk_ids.shape[-1])
+        topk_weights = topk_weights.view(-1, topk_weights.shape[-1])
 
-        return layer.moe_op(
+        output = layer.moe_op(
             x,
             topk_ids,
             topk_weights,
             permuted_weights=True,
             activation=activation,
-        ).view(*(x.size(0), *input_shape[1:]))
+        )
+        return output.view(*(output.size(0), *input_shape[1:]))
 
 
 def patched_fused_moe_forward(
