@@ -94,6 +94,7 @@ def get_features():
         Value('unified_attn', False),
         Value('scale_adjustment', True, env_var='VLLM_SCALE_ADJUSTMENT', env_var_type=boolean),
         Value('flatten_input', Any(ModelType('qwen3_moe'), ModelType('granitemoe'), ModelType('glm4_moe'))),
-        Value('moe_chunk', True, env_var='VLLM_MOE_CHUNK', env_var_type=boolean),
+        Value('moe_chunk', "", env_var='VLLM_MOE_CHUNK', env_var_type=list_of(int)),
+        Value('moe_token_boundary', "", env_var='VLLM_MOE_TOKEN_BOUNDARY', env_var_type=list_of(int)),
     ]
     return split_values_and_flags(features)

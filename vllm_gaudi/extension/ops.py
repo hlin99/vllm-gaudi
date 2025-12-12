@@ -475,16 +475,24 @@ class VllmMixtureOfExpertsOp(torch.nn.Module):
         self.moe_n_slice = 1 if self.num_experts <= max_expert_per_slice \
                 else self.num_experts // max_expert_per_slice
         self.num_expert_per_group = self.num_experts // self.moe_n_slice
-        self.enable_moe_chunk = get_config().moe_chunk
+        """
+        chunk_size is a key performance tuning parameter for the op
+        torch.ops.hpu.mixture_of_experts operator, and its configuration
+        depends on the number of tokens, so we set it by different values.
+        """
+        self.chunk_size_list = get_config().moe_chunk
+        self.token_boundary_list = get_config().moe_token_boundary
+        assert len(self.chunk_size_list) == len(
+            self.token_boundary_list), (f"chunk_size_list({len(self.chunk_size_list)}) and "
+                                        f"token_boundary_list({len(self.token_boundary_list)}) must be the same length")
 
     def _get_extra_kwargs(self, tokens_num: int):
-        if self.enable_moe_chunk:
-            if tokens_num <= 1536:
-                chunk_size = 64
-            elif tokens_num > 1536 and tokens_num <= 4096:
-                chunk_size = 256
-            else:
-                chunk_size = 512
+        if self.chunk_size_list:
+            chunk_size = self.chunk_size_list[-1]
+            for idx, threshold in enumerate(self.token_boundary_list):
+                if tokens_num <= threshold:
+                    chunk_size = self.chunk_size_list[idx]
+                    break
             kwargs = {
                 "chunk_size": chunk_size,
                 "total_experts": self.global_num_experts,
@@ -940,17 +948,25 @@ class VllmMixtureOfExpertsOpFP8(torch.nn.Module):
         self.moe_n_slice = 1 if self.num_experts <= max_expert_per_slice \
                 else self.num_experts // max_expert_per_slice
         self.num_expert_per_group = self.num_experts // self.moe_n_slice
-        self.enable_moe_chunk = get_config().moe_chunk
         self.dispatch_func = dispatch_fn
+        """
+        chunk_size is a key performance tuning parameter for the op
+        torch.ops.hpu.mixture_of_experts operator, and its configuration
+        depends on the number of tokens, so we set it by different values.
+        """
+        self.chunk_size_list = get_config().moe_chunk
+        self.token_boundary_list = get_config().moe_token_boundary
+        assert len(self.chunk_size_list) == len(
+            self.token_boundary_list), (f"chunk_size_list({len(self.chunk_size_list)}) and "
+                                        f"token_boundary_list({len(self.token_boundary_list)}) must be the same length")
 
     def _get_extra_kwargs(self, tokens_num: int):
-        if self.enable_moe_chunk:
-            if tokens_num <= 1536:
-                chunk_size = 64
-            elif tokens_num > 1536 and tokens_num <= 4096:
-                chunk_size = 256
-            else:
-                chunk_size = 512
+        if self.chunk_size_list:
+            chunk_size = self.chunk_size_list[-1]
+            for idx, threshold in enumerate(self.token_boundary_list):
+                if tokens_num <= threshold:
+                    chunk_size = self.chunk_size_list[idx]
+                    break
             kwargs = {
                 "chunk_size": chunk_size,
                 "total_experts": self.global_num_experts,
@@ -1032,17 +1048,25 @@ class VllmMixtureOfExpertsOpFP8PerChannel(torch.nn.Module):
         self.num_experts = num_experts
         self.experts_min = experts_min
         self.experts_max = experts_max
-        self.enable_moe_chunk = get_config().moe_chunk
         self.dispatch_func = dispatch_fn
+        """
+        chunk_size is a key performance tuning parameter for the op
+        torch.ops.hpu.mixture_of_experts operator, and its configuration
+        depends on the number of tokens, so we set it by different values.
+        """
+        self.chunk_size_list = get_config().moe_chunk
+        self.token_boundary_list = get_config().moe_token_boundary
+        assert len(self.chunk_size_list) == len(
+            self.token_boundary_list), (f"chunk_size_list({len(self.chunk_size_list)}) and "
+                                        f"token_boundary_list({len(self.token_boundary_list)}) must be the same length")
 
     def _get_extra_kwargs(self, tokens_num: int):
-        if self.enable_moe_chunk:
-            if tokens_num <= 1536:
-                chunk_size = 64
-            elif tokens_num > 1536 and tokens_num <= 4096:
-                chunk_size = 256
-            else:
-                chunk_size = 512
+        if self.chunk_size_list:
+            chunk_size = self.chunk_size_list[-1]
+            for idx, threshold in enumerate(self.token_boundary_list):
+                if tokens_num <= threshold:
+                    chunk_size = self.chunk_size_list[idx]
+                    break
             kwargs = {
                 "chunk_size": chunk_size,
                 "total_experts": self.global_num_experts,
