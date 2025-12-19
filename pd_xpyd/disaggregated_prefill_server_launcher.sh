@@ -76,7 +76,7 @@ EOF
 }
 
 # Default values
-MODEL="ibm-research/PowerMoE-3b"
+MODEL="/mnt/disk2/hf_models/DeepSeek-R1-G2-static/"
 SERVER_ROLE="prefill"
 NUM_LOCAL_INSTANCES=1
 BASE_PORT=8300
@@ -373,6 +373,22 @@ else
   export VLLM_PROMPT_QUERY_BUCKET_MIN=1
   export VLLM_PROMPT_QUERY_BUCKET_STEP=1
   export VLLM_PROMPT_QUERY_BUCKET_MAX=1
+
+  export VLLM_PROMPT_BS_BUCKET_MIN=1
+  export VLLM_PROMPT_BS_BUCKET_STEP=1
+  export VLLM_PROMPT_BS_BUCKET_MAX=1
+
+  unset VLLM_PROMPT_CTX_BUCKET_MIN
+  unset VLLM_PROMPT_CTX_BUCKET_MAX
+
+  export VLLM_DECODE_BS_BUCKET_MIN=1
+  export VLLM_DECODE_BS_BUCKET_STEP=4
+  export VLLM_DECODE_BS_BUCKET_MAX=32
+
+  export VLLM_DECODE_BLOCK_BUCKET_MIN=$decode_block_min
+  export VLLM_DECODE_BLOCK_BUCKET_STEP=32
+  export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
+
 fi
 
 # Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
@@ -484,7 +500,7 @@ launch_vllm_server() {
 
     LOG_FILE="${LOG_DIR_FULL}/vllm_server_${SERVER_ROLE}_node_${NODE_RANK}_rank_${i}.log"
     echo "Logging to: $LOG_FILE"
-    eval "$FULL_CMD &> \"$LOG_FILE\" &"
+    eval "$FULL_CMD 2>&1 | tee \"$LOG_FILE\" &"
 
     # Store host and port for proxy configuration
     HOSTS+=($NODE_IP)
