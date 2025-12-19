@@ -1,0 +1,4 @@
+bash disaggregated_prefill_server_launcher.sh -n 8 -d 16 --node-ip 192.168.100.231 --node-size 2 --node-rank 1 --dp-master-ip 10.239.129.81 --max-model-len 8192 --max-num-seqs 32 -r decode --async --nixl-buffer-device hpu
+#bash /mnt/disk3/xinyu/ml.infra.tools/scripts/nixl_connector/disaggregated_prefill_server_launcher -m /mnt/disk2/hf_models/DeepSeek-R1-G2-static/ --node-size 2 --node-rank 1 --dp-master-ip 10.239.129.81 -d 16 -n 8 --node-ip 192.168.100.231 --max-model-len 16384 --max-num-seqs 64 -r decode --async --nixl-buffer-device hpu
+#bash disaggregated_prefill_server_launcher.sh -m /mnt/disk2/hf_models/DeepSeek-R1-G2-static/ --node-size 2 --node-rank 1 --dp-master-ip 10.239.129.81 -d 16 -n 8 --node-ip 192.168.100.231 --max-model-len 16384 --max-num-seqs 64 -r decode --async --nixl-buffer-device hpu
+
