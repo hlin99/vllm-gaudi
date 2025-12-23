@@ -360,6 +360,9 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   if [ "$APC" = false ]; then
     export VLLM_PROMPT_CTX_BUCKET_MAX=0
   fi
+  unset VLLM_PROMPT_CTX_BUCKET_MIN
+  unset VLLM_PROMPT_CTX_BUCKET_MAX
+  unset VLLM_PROMPT_CTX_BUCKET_STEP
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
