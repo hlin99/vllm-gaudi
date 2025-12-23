@@ -341,7 +341,7 @@ prompt_bs_max=$(( $prompt_bs_max > $MAX_NUM_SEQS ? $MAX_NUM_SEQS : $prompt_bs_ma
 # Hardcoded to 8 here for avoiding extra prompt bucket on decode nodes
 prompt_bs_max=$(( $prompt_bs_max > 8 ? 8 : $prompt_bs_max ))
 prompt_bs_max=$(( ($prompt_bs_max + $prompt_bs_step - 1) / $prompt_bs_step * $prompt_bs_step ))
-prompt_seq_step=128
+prompt_seq_step=1024
 prompt_seq_min=$(( ($input_min + $prompt_seq_step -1) / $prompt_seq_step * $prompt_seq_step ))
 prompt_seq_max=$(( (($input_max + $prompt_seq_step -1) / $prompt_seq_step) * $prompt_seq_step ))
 prompt_ctx_max=$(( ($MAX_MODEL_LEN - $block_size) / $block_size ))
@@ -381,15 +381,15 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   fi
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
-  export VLLM_PROMPT_CTX_BUCKET_STEP=64
+  export VLLM_PROMPT_CTX_BUCKET_STEP=8
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
 
-  export VLLM_CONTIGUOUS_PA=true
-  export VLLM_DEFRAG=true
+  export VLLM_CONTIGUOUS_PA=false
+  export VLLM_DEFRAG=false
   # MoE settings
   export VLLM_SUPPORT_MOE_CHUNK="true"
   export VLLM__MOE_CHUNK="true"
@@ -412,13 +412,13 @@ else
   export VLLM_PROMPT_BS_BUCKET_STEP=1
   export VLLM_PROMPT_BS_BUCKET_MAX=1
 
-  unset VLLM_PROMPT_CTX_BUCKET_MIN
-  unset VLLM_PROMPT_CTX_BUCKET_MAX
+  export VLLM_PROMPT_CTX_BUCKET_MIN=1
+  export VLLM_PROMPT_CTX_BUCKET_MAX=1
   ctx_min=$((input_min / 128 - 1))
   ctx_max=$((input_max / 128 - 1))
 
-  export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
-  export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  # export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
+  # export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
   env|grep VLLM_PROMPT_CTX_BUCKET
 
   export VLLM_DECODE_BS_BUCKET_MIN=1
