@@ -378,6 +378,10 @@ def generate_buckets(bs_range,
     else:
         for bs_idx, bs in enumerate(bs_range):
             for ctx_idx, ctx in enumerate(ctx_range):
+                if ctx != 0 and bs != 1:
+                    # we now only allow bs=1 when ctx is not 0 to overcome HPU padding overhead on memory
+                    # this logic is echoing to _can_merge_prefill_contents logic in hpu_model_runner.py
+                    continue
                 local_buckets = expand_to_neighbor_buckets(bs_idx, bs_range, ctx_idx, ctx_range,
                                                            max_num_batched_tokens) if not is_prompt else {(bs, ctx)}
                 buckets_2d.update(local_buckets)
