@@ -95,7 +95,7 @@ MAX_MODEL_LEN=8192
 MAX_NUM_BATCHED_TOKENS=8192
 MAX_NUM_SEQS=256
 MAX_CUDAGRAPH_CAPTURE_SIZE=4096
-GPU_MEMORY_UTILIZATION=0.75
+GPU_MEMORY_UTILIZATION=0.5
 ENFORCE_EAGER=false
 DEBUG=false
 APC=false
@@ -320,6 +320,7 @@ block_size=128
 input_min=128
 input_max=$MAX_MODEL_LEN
 output_max=$MAX_MODEL_LEN
+
 prompt_bs_step=2
 prompt_bs_min=1
 prompt_bs_max=$(( $MAX_NUM_BATCHED_TOKENS / $input_min ))
@@ -364,8 +365,19 @@ else
   BASE_PORT=$((BASE_PORT+1000))
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
+
+  export VLLM_CONTIGUOUS_PA=true
+  export VLLM_DEFRAG=true
   # MoE settings
   export VLLM_SUPPORT_MOE_CHUNK="true"
+  export VLLM__MOE_CHUNK="true"
+  export VLLM_MOE_CHUNK="64, 128"
+  export VLLM_SUPPORT_MOE_CHUNK="true"
+  export PT_HPU_MOE_CHUNK="64, 128"
+  export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
+  export VLLM_MOE_CHUNK="64, 128"
+  export VLLM_MOE_TOKEN_BOUNDARY="2048, 4096"
+
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
   export VLLM_EXPONENTIAL_BUCKETING=false
@@ -380,6 +392,12 @@ else
 
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
+  ctx_min=$((input_min / 128 - 1))
+  ctx_max=$((input_max / 128 - 1))
+
+  export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  env|grep VLLM_PROMPT_CTX_BUCKET
 
   export VLLM_DECODE_BS_BUCKET_MIN=1
   export VLLM_DECODE_BS_BUCKET_STEP=4
