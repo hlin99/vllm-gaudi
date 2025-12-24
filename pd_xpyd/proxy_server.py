@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import httpx
+import asyncio
 
 os.environ["PT_HPU_LAZY_MODE"] = "1"
 import sys
@@ -99,6 +100,9 @@ class Proxy:
         custom_create_chat_completion: Optional[
             Callable[[Request], StreamingResponse]
         ] = None,
+        benchmark_mode: bool = False,
+        repeat_p_request: int = 1,
+        repeat_d_times: int = 511,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -112,6 +116,10 @@ class Proxy:
         self.setup_routes()
         self.generator = D_first_token_generator
         self.tokenizer = AutoTokenizer.from_pretrained(model)
+        # benchmark mode parameters
+        self.benchmark_mode = benchmark_mode
+        self.repeat_p_request = repeat_p_request
+        self.repeat_d_times = repeat_d_times
 
     def on_done(
         self,
@@ -557,6 +565,73 @@ class Proxy:
 
         return response
 
+    async def forward_request_benchmark_mode(self,
+                                             url,
+                                             data,
+                                             use_chunked=True):
+        async with aiohttp.ClientSession(timeout=AIOHTTP_TIMEOUT) as session:
+            headers = {
+                "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}"
+            }
+            try:
+                async with session.post(url=url, json=data,
+                                        headers=headers) as response:
+                    if (200 <= response.status < 300 or
+                            400 <= response.status < 500):
+                        if use_chunked:
+                            chunks = []
+                            async for chunk_bytes in (
+                                response.content.iter_chunked(1024)):
+                                chunks.append(chunk_bytes)
+                            return b"".join(chunks)
+                        else:
+                            content = await response.read()
+                            return content
+                    else:
+                        error_content = await response.text()
+                        try:
+                            error_content = json.loads(error_content)
+                        except json.JSONDecodeError:
+                            pass  # leave error_content as str
+                        logger.error("Request failed with status %s: %s",
+                                     response.status, error_content)
+                        raise HTTPException(
+                            status_code=response.status,
+                            detail=
+                            f"Request failed with status"
+                            f"{response.status}: {error_content}",
+                        )
+            except aiohttp.ClientError as e:
+                logger.error("ClientError occurred: %s", str(e))
+                raise HTTPException(
+                    status_code=502,
+                    detail=
+                    "Bad Gateway: Error communicating with upstream server.",
+                ) from e
+            except Exception as e:
+                logger.error("Unexpected error: %s", str(e))
+                raise HTTPException(status_code=500, detail=str(e)) from e
+
+    def handle_benchmark_mode_requests(self, request):
+        if self.benchmark_mode != 1:
+            return
+        if self.repeat_p_request == 0:
+            print(
+                f"Trigger repeating p request, d times={self.repeat_d_times}")
+            for counter in range(self.repeat_d_times):
+                print(f"Repeat time: {counter}")
+                decode_instance = self.schedule(self.decode_cycler, is_prompt=False, request_len=100)
+                if not decode_instance:
+                    raise HTTPException(status_code=503,
+                                        detail="No decode instances available")
+                asyncio.create_task(
+                        self.forward_request_benchmark_mode(
+                            f"http://{decode_instance}/v1/completions",
+                            request))
+        else:
+            self.repeat_p_request -= 1
+
+
     async def create_completion(self, raw_request: Request):
         try:
             request = await raw_request.json()
@@ -592,6 +667,10 @@ class Proxy:
             kv_transfer_params = response_json.get("kv_transfer_params", {})
             if kv_transfer_params:
                 request["kv_transfer_params"] = kv_transfer_params
+
+            # Perform kv recv and decoding stage
+            self.handle_benchmark_mode_requests(request)
+
             decode_instance = self.schedule(
                 self.decode_cycler, is_prompt=False, request_len=total_length
             )
@@ -975,6 +1054,9 @@ class ProxyServer:
             ),
             custom_create_completion=create_completion,
             custom_create_chat_completion=create_chat_completion,
+            benchmark_mode=args.benchmark_mode,
+            repeat_p_request=args.repeat_p_request,
+            repeat_d_times=args.repeat_d_times,
         )
 
     def validate_parsed_serve_args(self, prefills: list, decodes: list):
@@ -1073,6 +1155,26 @@ if __name__ == "__main__":
         "--bypass-proxy",
         action="store_true",
         help="Bypass HTTP/HTTPS proxy settings when connecting to prefill and decode instances",
+    )
+
+    parser.add_argument(
+        "--benchmark_mode",
+        action="store_true",
+        help="benchmark mode, single P for multiple D ",
+    )
+
+    parser.add_argument(
+        "--repeat_p_request",
+        type=int,
+        default=1,
+        help="the number of p request to repeat",
+    )
+
+    parser.add_argument(
+        "--repeat_d_times",
+        type=int,
+        default=100,
+        help="the times to repeat on d node",
     )
 
     args = parser.parse_args()
