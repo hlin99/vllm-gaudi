@@ -2540,7 +2540,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if htorch.utils.internal.is_lazy():
             use_graphs = self._use_graphs()
             #if self.max_cudagraph_capture_size is not None and batch_size * seq_len > self.max_cudagraph_capture_size:
-            if self.max_cudagraph_capture_size is not None and attn_metadata.is_prompt and batch_size * seq_len + 128 * num_blocks > self.max_cudagraph_capture_size:
+            if self.max_cudagraph_capture_size is not None and attn_metadata.is_prompt and batch_size * seq_len + 128 * num_blocks > 1024:
                 use_graphs = False
             additional_kwargs.update({"bypass_hpu_graphs": not use_graphs})
         else:
@@ -4823,8 +4823,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             assert layer_names == set(kv_caches.keys()), "Some layers are not correctly initialized"
         bind_kv_cache(kv_caches, self.vllm_config.compilation_config.static_forward_context, self.kv_caches)
 
+        num_blocks = num_blocks - 100
         if self.enable_bucketing:
-            self.bucketing_manager.num_hpu_blocks = num_blocks
+            self.bucketing_manager.num_hpu_blocks = num_blocks 
         self._PAD_BLOCK_ID = num_blocks
         self._PAD_SLOT_ID = num_blocks * self.block_size
 
