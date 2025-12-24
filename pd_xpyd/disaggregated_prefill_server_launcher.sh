@@ -34,6 +34,7 @@ OPTIONS:
     --enforce-eager                 Enable eager execution mode
     --debug                         Enable debug mode with reduced model layers
     --apc                           Enable vLLM prefix cache
+    --chunked-prefill               Enable chunked prefill
     --profile                       Enable profiling (HABANA_PROFILE and VLLM_PROFILER_ENABLED)
     --recipe-cache                  Enable HPU recipe cache
     --async                         Enable async scheduling for decode role (adds --async-scheduling)
@@ -75,8 +76,9 @@ EXAMPLES:
 EOF
 }
 
+export VLLM_DEVELOPER_MODE=1
 # Default values
-MODEL="ibm-research/PowerMoE-3b"
+MODEL="/mnt/disk2/hf_models/DeepSeek-R1-G2-static/"
 SERVER_ROLE="prefill"
 NUM_LOCAL_INSTANCES=1
 BASE_PORT=8300
@@ -95,10 +97,11 @@ MAX_MODEL_LEN=8192
 MAX_NUM_BATCHED_TOKENS=8192
 MAX_NUM_SEQS=256
 MAX_CUDAGRAPH_CAPTURE_SIZE=4096
-GPU_MEMORY_UTILIZATION=0.75
+GPU_MEMORY_UTILIZATION=0.5
 ENFORCE_EAGER=false
 DEBUG=false
 APC=false
+CHUNKED_PREFILL=false
 PROFILE=false
 RECIPE_CACHE=false
 ASYNC=false
@@ -206,6 +209,10 @@ while [[ $# -gt 0 ]]; do
             APC=true
             shift
             ;;
+	--chunked-prefill)
+            CHUNKED_PREFILL=true
+            shift
+            ;;
         --profile)
             PROFILE=true
             shift
@@ -256,6 +263,13 @@ PREFIX_CACHE=()
 if [ "$APC" = false ]; then
   # APC will be disabled
   PREFIX_CACHE+=(--no-enable-prefix-caching)
+fi
+
+# Set flags based on --chunked-prefill option
+CHUNK_PREFILL=()
+if [ "$CHUNKED_PREFILL" = false ]; then
+  # chunked prefill will be disabled
+  CHUNK_PREFILL+=(--no-enable-chunked-prefill)
 fi
 
 # Set profiling flags based on --profile option
@@ -318,9 +332,9 @@ fi
 # Bucket settings
 block_size=128
 input_min=128
-input_max=$MAX_MODEL_LEN
+input_max=$(( MAX_NUM_BATCHED_TOKENS < MAX_MODEL_LEN ? MAX_NUM_BATCHED_TOKENS : MAX_MODEL_LEN ))
 output_max=$MAX_MODEL_LEN
-prompt_bs_step=2
+prompt_bs_step=1
 prompt_bs_min=1
 prompt_bs_max=$(( $MAX_NUM_BATCHED_TOKENS / $input_min ))
 prompt_bs_max=$(( $prompt_bs_max > $MAX_NUM_SEQS ? $MAX_NUM_SEQS : $prompt_bs_max ))
@@ -340,6 +354,12 @@ decode_block_min=$(( ($decode_block_min + $decode_block_step) / $decode_block_st
 decode_block_max=$(( (($input_max + $output_max + $block_size -1) / $block_size + 1) * $decode_bs_max))
 # Set role-specific configurations
 if [ "$SERVER_ROLE" == "prefill" ]; then
+  if [[ "$MAX_MODEL_LEN" -eq 131072 ]]; then
+	  echo "128k model len settings"
+	  export VLLM_CONTIGUOUS_PA=false
+	  export VLLM_GRAPH_RESERVED_MEM=0.564
+	  export VLLM_GRAPH_PROMPT_RATIO=1
+  fi
   KV_ROLE="kv_producer"
   export VLLM_SUPPORT_MOE_CHUNK="false"
   # Bucket settings
@@ -359,22 +379,56 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   if [ "$APC" = false ]; then
     export VLLM_PROMPT_CTX_BUCKET_MAX=0
   fi
+  unset VLLM_PROMPT_CTX_BUCKET_MIN
+  unset VLLM_PROMPT_CTX_BUCKET_MAX
+  export VLLM_PROMPT_CTX_BUCKET_STEP=64
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
+
+  export VLLM_CONTIGUOUS_PA=true
+  export VLLM_DEFRAG=true
   # MoE settings
+  export VLLM_SUPPORT_MOE_CHUNK="true"
+  export VLLM__MOE_CHUNK="true"
+  export VLLM_MOE_CHUNK="64, 128"
   export VLLM_SUPPORT_MOE_CHUNK="true"
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
   export VLLM_MOE_CHUNK="64, 128"
   export VLLM_MOE_TOKEN_BOUNDARY="2048, 4096"
-  export VLLM_EXPONENTIAL_BUCKETING=true
+
+  export PT_HPU_MOE_CHUNK="64, 128"
+  export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
+  export VLLM_EXPONENTIAL_BUCKETING=false
   # Bucket settings
   export VLLM_PROMPT_QUERY_BUCKET_MIN=1
   export VLLM_PROMPT_QUERY_BUCKET_STEP=1
   export VLLM_PROMPT_QUERY_BUCKET_MAX=1
+
+  export VLLM_PROMPT_BS_BUCKET_MIN=1
+  export VLLM_PROMPT_BS_BUCKET_STEP=1
+  export VLLM_PROMPT_BS_BUCKET_MAX=1
+
+  unset VLLM_PROMPT_CTX_BUCKET_MIN
+  unset VLLM_PROMPT_CTX_BUCKET_MAX
+  ctx_min=$((input_min / 128 - 1))
+  ctx_max=$((input_max / 128 - 1))
+
+  export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  env|grep VLLM_PROMPT_CTX_BUCKET
+
+  export VLLM_DECODE_BS_BUCKET_MIN=1
+  export VLLM_DECODE_BS_BUCKET_STEP=4
+  export VLLM_DECODE_BS_BUCKET_MAX=32
+
+  export VLLM_DECODE_BLOCK_BUCKET_MIN=$decode_block_min
+  export VLLM_DECODE_BLOCK_BUCKET_STEP=32
+  export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
+
 fi
 
 # Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
@@ -473,6 +527,7 @@ launch_vllm_server() {
     --trust-remote-code \
     --tensor-parallel-size $TP_SIZE \
     ${PREFIX_CACHE[@]} \
+    ${CHUNK_PREFILL[@]} \
     ${DP_ARGS[@]} \
     ${DEBUG_ARGS[@]} \
     ${EAGER_ARGS[@]} \
@@ -486,7 +541,7 @@ launch_vllm_server() {
 
     LOG_FILE="${LOG_DIR_FULL}/vllm_server_${SERVER_ROLE}_node_${NODE_RANK}_rank_${i}.log"
     echo "Logging to: $LOG_FILE"
-    eval "$FULL_CMD &> \"$LOG_FILE\" &"
+    eval "$FULL_CMD 2>&1 | tee \"$LOG_FILE\" &"
 
     # Store host and port for proxy configuration
     HOSTS+=($NODE_IP)
@@ -557,3 +612,4 @@ launch_vllm_server() {
 }
 
 launch_vllm_server "$MODEL"
+
