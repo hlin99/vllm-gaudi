@@ -76,7 +76,7 @@ EOF
 }
 
 # Default values
-MODEL="/mnt/disk2/hf_models/DeepSeek-R1-G2-static/"
+MODEL="/mnt/disk2/hf_models/DeepSeek-R1-G2/"
 SERVER_ROLE="prefill"
 NUM_LOCAL_INSTANCES=1
 BASE_PORT=8300
