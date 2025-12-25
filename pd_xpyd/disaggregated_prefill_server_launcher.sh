@@ -388,7 +388,7 @@ else
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
 
-  export VLLM_CONTIGUOUS_PA=false
+  export VLLM_CONTIGUOUS_PA=true
   export VLLM_DEFRAG=false
   # MoE settings
   export VLLM_SUPPORT_MOE_CHUNK="true"
@@ -412,8 +412,8 @@ else
   export VLLM_PROMPT_BS_BUCKET_STEP=1
   export VLLM_PROMPT_BS_BUCKET_MAX=1
 
-  export VLLM_PROMPT_CTX_BUCKET_MIN=1
-  export VLLM_PROMPT_CTX_BUCKET_MAX=1
+  export VLLM_PROMPT_CTX_BUCKET_MIN=0
+  export VLLM_PROMPT_CTX_BUCKET_MAX=0
   ctx_min=$((input_min / 128 - 1))
   ctx_max=$((input_max / 128 - 1))
 
