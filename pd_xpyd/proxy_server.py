@@ -662,7 +662,7 @@ class Proxy:
                 request["kv_transfer_params"] = kv_transfer_params
             
             # Perform kv recv and decoding stage
-            self.handle_benchmark_mode_requests(request)
+            # self.handle_benchmark_mode_requests(request)
 
             decode_instance = self.schedule(
                 self.decode_cycler, is_prompt=False, request_len=total_length
