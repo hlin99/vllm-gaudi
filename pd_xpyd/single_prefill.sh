@@ -331,9 +331,10 @@ fi
 
 # Bucket settings
 block_size=128
-input_min=128
+input_min=1024
 input_max=$(( MAX_NUM_BATCHED_TOKENS < MAX_MODEL_LEN ? MAX_NUM_BATCHED_TOKENS : MAX_MODEL_LEN ))
-output_max=$MAX_MODEL_LEN
+input_max=8192
+output_max=128
 prompt_bs_step=1
 prompt_bs_min=1
 prompt_bs_max=$(( $MAX_NUM_BATCHED_TOKENS / $input_min ))
@@ -377,6 +378,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   export VLLM_DECODE_BLOCK_BUCKET_MIN=$decode_block_min
   export VLLM_DECODE_BLOCK_BUCKET_STEP=$decode_block_step
   export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
+  export VLLM_DECODE_BLOCK_BUCKET_STEP=128
   
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
@@ -384,6 +386,8 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   if [ "$APC" = false ]; then
     export VLLM_PROMPT_CTX_BUCKET_MIN=0
     export VLLM_PROMPT_CTX_BUCKET_MAX=0
+    export VLLM_DECODE_CTX_BUCKET_MIN=0
+    export VLLM_DECODE_CTX_BUCKET_MAX=0
   fi
 
 else
