@@ -9,7 +9,7 @@ fi
 
 if [[ $# -eq 1 ]]; then
     echo "Using default model: meta-llama/Llama-3.1-8B-Instruct"
-    MODEL="meta-llama/Llama-3.1-8B-Instruct"
+    MODEL="/mnt/disk2/hf_models/Meta-Llama-3-8B-Instruct"
 else
     echo "Using model: $2"
     MODEL=$2
@@ -36,7 +36,6 @@ if [[ $1 == "prefiller" ]]; then
         --port 1100 \
         --gpu_memory_utilization 0.80 \
         --disable-log-requests \
-        --enforce-eager \
         --kv-transfer-config \
         '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_producer","kv_connector_extra_config": {"discard_partial_chunks": false, "lmcache_rpc_port": "producer1"}}'
 
@@ -59,7 +58,7 @@ elif [[ $1 == "decoder" ]]; then
         vllm serve $MODEL \
 	--max-num-batched-tokens 8192 \
         --port 1200 \
-        --gpu_memory_utilization 0.80 \
+        --gpu_memory_utilization 0.60 \
         --disable-log-requests \
         --enforce-eager \
         --kv-transfer-config \
