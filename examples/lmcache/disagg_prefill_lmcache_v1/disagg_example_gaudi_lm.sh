@@ -123,10 +123,10 @@ main() {
     echo "All servers are up. Starting benchmark..."
 
     # begin benchmark
-    MODEL="meta-llama/Llama-3.1-8B-Instruct"
+    MODEL="/mnt/disk2/hf_models/Meta-Llama-3-8B-Instruct"
     vllm bench serve --port 1000 --seed $(date +%s) \
         --model $MODEL \
-        --dataset-name random --random-input-len 8000 --random-output-len 200 \
+        --dataset-name random --random-input-len 2000 --random-output-len 200 \
         --num-prompts 100 --burstiness 100 --request-rate 3.6 | tee benchmark.log
 
     echo "Benchmarking done. Cleaning up..."
