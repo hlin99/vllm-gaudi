@@ -388,7 +388,7 @@ else
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
 
-  export VLLM_CONTIGUOUS_PA=true
+  export VLLM_CONTIGUOUS_PA=false
   export VLLM_DEFRAG=false
   # MoE settings
   export VLLM_SUPPORT_MOE_CHUNK="true"
@@ -402,7 +402,7 @@ else
 
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
-  export VLLM_EXPONENTIAL_BUCKETING=false
+  export VLLM_EXPONENTIAL_BUCKETING=true
   # Bucket settings
   export VLLM_PROMPT_QUERY_BUCKET_MIN=1
   export VLLM_PROMPT_QUERY_BUCKET_STEP=1
@@ -417,8 +417,9 @@ else
   ctx_min=$((input_min / 128 - 1))
   ctx_max=$((input_max / 128 - 1))
 
-  # export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
-  # export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  unset VLLM_PROMPT_CTX_BUCKET_MIN VLLM_PROMPT_CTX_BUCKET_MAX
   env|grep VLLM_PROMPT_CTX_BUCKET
 
   export VLLM_DECODE_BS_BUCKET_MIN=1

@@ -118,6 +118,8 @@ class Proxy:
         self.tokenizer = AutoTokenizer.from_pretrained(model)
         # benchmark mode parameters
         self.benchmark_mode = benchmark_mode
+        if self.benchmark_mode == True:
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!   this is benchmark mode    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         self.repeat_p_request = repeat_p_request
         self.repeat_d_times = repeat_d_times
 
