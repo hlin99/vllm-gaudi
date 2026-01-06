@@ -3,4 +3,4 @@ max_local_cpu_size: 5.0
 #local_disk: 
 max_local_disk_size: 0
 remote_serde: naive
-remote_url: "lm://localhost:8100"
+remote_url: "lm://10.239.129.9:8100"
