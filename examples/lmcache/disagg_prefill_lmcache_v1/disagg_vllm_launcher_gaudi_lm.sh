@@ -60,7 +60,6 @@ elif [[ $1 == "decoder" ]]; then
         --port 1200 \
         --gpu_memory_utilization 0.60 \
         --disable-log-requests \
-        --enforce-eager \
         --kv-transfer-config \
         '{"kv_connector":"LMCacheConnectorV1","kv_role":"kv_consumer","kv_connector_extra_config": {"discard_partial_chunks": false, "lmcache_rpc_port": "consumer1"}}'
 
