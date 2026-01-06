@@ -43,6 +43,7 @@ OPTIONS:
     --inc CONFIG_FILE               Path to quantization config JSON file for INC quantization
     --log-dir DIR                   Directory to save server logs (default: current directory)
                                     Logs will be saved in DIR/xpyd_logs/YYYYMMDD_HHMMSS/
+    --kv-connector		    nixl or lmcache
 
 EXAMPLES:
     # Launch prefill server with default settings
@@ -109,6 +110,7 @@ WARMUP=false
 ENABLE_EXPERT_PARALLEL=true
 INC_CONFIG=""
 LOG_DIR="."
+KV_CONNECTOR="nixl"
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -241,6 +243,10 @@ while [[ $# -gt 0 ]]; do
             LOG_DIR="$2"
             shift 2
             ;;
+	--kv-connector)
+            KV_CONNECTOR="$2"
+            shift 2
+            ;;
         *)
             echo "Unknown option: $1"
             show_help
@@ -255,7 +261,7 @@ export VLLM_USE_V1=1
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-export PT_HPU_LAZY_MODE=1
+#export PT_HPU_LAZY_MODE=1
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
@@ -316,19 +322,28 @@ if [ ! -d "$LOG_DIR_FULL" ]; then
   fi
 fi
 
-# NIXL Config
-export VLLM_NIXL_SIDE_CHANNEL_HOST=${NODE_IP}
-if [ "$NIXL_BUFFER_DEVICE" == "cpu" ]; then
-  export VLLM_NIXL_DEVICE_TO_DEVICE=false
+if [ "$KV_CONNECTOR" = "lmcache" ]; then
+    echo "kv connector is lmcache"
+    export PYTHONHASHSEED=0
+    export PT_HPU_GPU_MIGRATION=1
+    export LMCACHE_REMOTE_SERDE=naive
+    export LMCACHE_CHUNK_SIZE=256
+    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-config-lm.yaml"
 else
-  export VLLM_NIXL_DEVICE_TO_DEVICE=true
-  # Add gaudi_gdr to UCX_TLS if not already present
-  if [[ "$UCX_TLS" != *"gaudi_gdr"* ]]; then
-    UCX_TLS="${UCX_TLS},gaudi_gdr"
-  fi
-  export UCX_MEMTYPE_CACHE=0
+    echo "kv connector is nixl"
+    # NIXL Config
+    export VLLM_NIXL_SIDE_CHANNEL_HOST=${NODE_IP}
+    if [ "$NIXL_BUFFER_DEVICE" == "cpu" ]; then
+      export VLLM_NIXL_DEVICE_TO_DEVICE=false
+    else
+      export VLLM_NIXL_DEVICE_TO_DEVICE=true
+      # Add gaudi_gdr to UCX_TLS if not already present
+      if [[ "$UCX_TLS" != *"gaudi_gdr"* ]]; then
+        UCX_TLS="${UCX_TLS},gaudi_gdr"
+      fi
+      export UCX_MEMTYPE_CACHE=0
+    fi	
 fi
-
 # Bucket settings
 block_size=128
 input_min=128
@@ -382,6 +397,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
   export VLLM_PROMPT_CTX_BUCKET_STEP=64
+  RPC_PORT="producer"
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
@@ -428,7 +444,7 @@ else
   export VLLM_DECODE_BLOCK_BUCKET_MIN=$decode_block_min
   export VLLM_DECODE_BLOCK_BUCKET_STEP=32
   export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
-
+  RPC_PORT="consumer"
 fi
 
 # Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
@@ -514,34 +530,53 @@ launch_vllm_server() {
       BASE_CMD="${BASE_CMD} VLLM_TORCH_PROFILER_DIR=${PROFILE_DIR}"
       echo "Profile output directory for instance $i: $PROFILE_DIR"
     fi
-    
-    BASE_CMD="${BASE_CMD} vllm serve $model_name \
-    --port $PORT \
-    --long_prefill_token_threshold 8192 \
-    --max_num_batched_tokens $MAX_NUM_BATCHED_TOKENS \
-    --max-model-len $MAX_MODEL_LEN \
-    --max-num-seqs $MAX_NUM_SEQS \
-    --max-cudagraph-capture-size $MAX_CUDAGRAPH_CAPTURE_SIZE \
-    --gpu-memory-utilization $GPU_MEMORY_UTILIZATION \
-    --disable-log-requests \
-    --trust-remote-code \
-    --tensor-parallel-size $TP_SIZE \
-    ${PREFIX_CACHE[@]} \
-    ${CHUNK_PREFILL[@]} \
-    ${DP_ARGS[@]} \
-    ${DEBUG_ARGS[@]} \
-    ${EAGER_ARGS[@]} \
-    ${ASYNC_ARGS[@]} \
-    ${EXPERT_PARALLEL_ARGS[@]} \
-    ${INC_ARGS[@]} \
-    --kv-transfer-config '{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"${KV_ROLE}\",\"kv_buffer_device\":\"${NIXL_BUFFER_DEVICE}\", \"kv_connector_extra_config\":{\"backends\":[\"${VLLM_NIXL_BACKEND}\"]}}'"
+    RPC_PORT="${RPC_PORT}${i}"
+    KV_CONNECTOR_ARGS=()
+    if [ "$KV_CONNECTOR" = "lmcache" ]; then
+      KV_CONNECTOR_ARGS+=(
+        --kv-transfer-config
+	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"false\",\"lmcache_rpc_port\":\"${RPC_PORT}\"}}"
+      )
+    else
+      KV_CONNECTOR_ARGS+=(
+        --kv-transfer-config
+        "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"${KV_ROLE}\",\"kv_buffer_device\":\"${NIXL_BUFFER_DEVICE}\",\"kv_connector_extra_config\":{\"backends\":[\"${VLLM_NIXL_BACKEND}\"]}}"
+      )
+    fi
+    BASE_CMD=(
+	vllm serve "$model_name"
+	  --port "$PORT"
+	  --long_prefill_token_threshold 8192
+	  --max_num_batched_tokens "$MAX_NUM_BATCHED_TOKENS"
+	  --max-model-len "$MAX_MODEL_LEN"
+	  --max-num-seqs "$MAX_NUM_SEQS"
+	  --max-cudagraph-capture-size "$MAX_CUDAGRAPH_CAPTURE_SIZE"
+	  --gpu-memory-utilization "$GPU_MEMORY_UTILIZATION"
+	  --disable-log-requests
+	  --trust-remote-code
+	  --tensor-parallel-size "$TP_SIZE"
+    )
 
-    FULL_CMD="$BASE_CMD"
-    echo $FULL_CMD
+    BASE_CMD+=(
+	  "${PREFIX_CACHE[@]}"
+	  "${CHUNK_PREFILL[@]}"
+	  "${DP_ARGS[@]}"
+	  "${DEBUG_ARGS[@]}"
+	  "${EAGER_ARGS[@]}"
+	  "${ASYNC_ARGS[@]}"
+	  "${EXPERT_PARALLEL_ARGS[@]}"
+	  "${INC_ARGS[@]}"
+	  "${KV_CONNECTOR_ARGS[@]}"
+    )
+    echo "====== Final vLLM command ======"
+    for elem in "${BASE_CMD[@]}"; do
+      printf '%q ' "$elem"
+    done
+    echo "================================"
 
     LOG_FILE="${LOG_DIR_FULL}/vllm_server_${SERVER_ROLE}_node_${NODE_RANK}_rank_${i}.log"
     echo "Logging to: $LOG_FILE"
-    eval "$FULL_CMD 2>&1 | tee \"$LOG_FILE\" &"
+    "${BASE_CMD[@]}" 2>&1 | tee -a "$LOG_FILE" &
 
     # Store host and port for proxy configuration
     HOSTS+=($NODE_IP)
