@@ -329,7 +329,7 @@ if [ "$KV_CONNECTOR" = "lmcache" ]; then
     export LMCACHE_REMOTE_SERDE=naive
     export LMCACHE_CHUNK_SIZE=256
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-config-lm.yaml"
-    export PT_HPU_LAZY_MODE=0
+    export PT_HPU_LAZY_MODE=1
 else
     echo "kv connector is nixl"
     # NIXL Config
