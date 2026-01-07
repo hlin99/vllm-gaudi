@@ -3269,8 +3269,23 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if not warmup_mode:
             if LMCacheConnectorMetadata is not None and isinstance(scheduler_output.kv_connector_metadata,
                                                                    LMCacheConnectorMetadata):
-                with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
-                    self.maybe_setup_kv_connector(scheduler_output)
+                aaa = prefill_data.token_ids
+                if isinstance(aaa, torch.Tensor):
+                    num_tokens = aaa.numel()
+                elif isinstance(aaa, list):
+                    num_tokens = sum(t.numel() for t in aaa)
+                else:
+                    print("***************************************************************")
+                
+                if num_tokens != 0:
+                    bbb = torch.full((16,), num_tokens, dtype=torch.int64)
+                    with set_forward_context(prefill_data.attn_metadata, self.vllm_config, num_tokens=num_tokens, num_tokens_across_dp=bbb):
+                    #with set_forward_context(None, self.vllm_config):
+                        self.maybe_setup_kv_connector(scheduler_output)
+                else:
+                    with set_forward_context(None, self.vllm_config):
+                        self.maybe_setup_kv_connector(scheduler_output)
+
             else:
                 with set_forward_context(None, self.vllm_config):
                     self.maybe_setup_kv_connector(scheduler_output)
