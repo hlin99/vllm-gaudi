@@ -261,7 +261,7 @@ export VLLM_USE_V1=1
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-#export PT_HPU_LAZY_MODE=1
+export PT_HPU_LAZY_MODE=1
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
@@ -329,6 +329,7 @@ if [ "$KV_CONNECTOR" = "lmcache" ]; then
     export LMCACHE_REMOTE_SERDE=naive
     export LMCACHE_CHUNK_SIZE=256
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-config-lm.yaml"
+    export PT_HPU_LAZY_MODE=0
 else
     echo "kv connector is nixl"
     # NIXL Config
@@ -530,12 +531,13 @@ launch_vllm_server() {
       BASE_CMD="${BASE_CMD} VLLM_TORCH_PROFILER_DIR=${PROFILE_DIR}"
       echo "Profile output directory for instance $i: $PROFILE_DIR"
     fi
-    RPC_PORT="${RPC_PORT}${i}"
+    RPC_PORTx="${RPC_PORT}$(( i + 8 * NODE_RANK ))"
+
     KV_CONNECTOR_ARGS=()
     if [ "$KV_CONNECTOR" = "lmcache" ]; then
       KV_CONNECTOR_ARGS+=(
         --kv-transfer-config
-	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"false\",\"lmcache_rpc_port\":\"${RPC_PORT}\"}}"
+	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"false\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
       )
     else
       KV_CONNECTOR_ARGS+=(
