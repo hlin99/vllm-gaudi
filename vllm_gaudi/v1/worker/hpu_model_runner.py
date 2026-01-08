@@ -2155,8 +2155,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         # slot_mapping, such that the attention KV cache insertion
         # logic knows to ignore those indicies. Otherwise, the
         # padding data can be dummy since we have a causal mask.
-
         num_pad_across_dp = self.get_dp_padding(num_decodes)
+
         if num_decodes == 0:
             if num_pad_across_dp > 0:
                 dummy_decode_input_data = self._create_dummy_decode_input_data()
@@ -2565,8 +2565,10 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             #if self.max_cudagraph_capture_size is not None and batch_size * seq_len > self.max_cudagraph_capture_size:
             if self.max_cudagraph_capture_size is not None and attn_metadata.is_prompt and batch_size * seq_len > self.max_cudagraph_capture_size:
                 use_graphs = False
-            if attn_metadata.is_prompt and num_blocks != 0:
-                use_graphs = False
+            #if attn_metadata.is_prompt and num_blocks != 0:
+            #    use_graphs = False
+            use_graphs = False
+
             additional_kwargs.update({"bypass_hpu_graphs": not use_graphs})
         else:
             # no hpu graphs for t.compile?
@@ -3269,6 +3271,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if not warmup_mode:
             if LMCacheConnectorMetadata is not None and isinstance(scheduler_output.kv_connector_metadata,
                                                                    LMCacheConnectorMetadata):
+                '''
                 aaa = prefill_data.token_ids
                 if isinstance(aaa, torch.Tensor):
                     num_tokens = aaa.numel()
@@ -3285,6 +3288,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                 else:
                     with set_forward_context(None, self.vllm_config):
                         self.maybe_setup_kv_connector(scheduler_output)
+                '''
+                with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
+                    self.maybe_setup_kv_connector(scheduler_output)
 
             else:
                 with set_forward_context(None, self.vllm_config):
