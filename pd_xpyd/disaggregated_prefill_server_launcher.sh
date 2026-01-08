@@ -419,23 +419,24 @@ else
 
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
-  export VLLM_EXPONENTIAL_BUCKETING=true
+  export VLLM_EXPONENTIAL_BUCKETING=false
   # Bucket settings
-  export VLLM_PROMPT_QUERY_BUCKET_MIN=1
-  export VLLM_PROMPT_QUERY_BUCKET_STEP=1
-  export VLLM_PROMPT_QUERY_BUCKET_MAX=1
+  #export VLLM_PROMPT_QUERY_BUCKET_MIN=1
+  #export VLLM_PROMPT_QUERY_BUCKET_STEP=1
+  #export VLLM_PROMPT_QUERY_BUCKET_MAX=1
 
-  export VLLM_PROMPT_BS_BUCKET_MIN=1
-  export VLLM_PROMPT_BS_BUCKET_STEP=1
-  export VLLM_PROMPT_BS_BUCKET_MAX=1
+  #export VLLM_PROMPT_BS_BUCKET_MIN=1
+  #export VLLM_PROMPT_BS_BUCKET_STEP=1
+  #export VLLM_PROMPT_BS_BUCKET_MAX=1
 
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
   ctx_min=$((input_min / 128 - 1))
   ctx_max=$((input_max / 128 - 1))
 
-  #export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
-  #export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
+  export VLLM_PROMPT_CTX_BUCKET_STEP=8
   env|grep VLLM_PROMPT_CTX_BUCKET
 
   export VLLM_DECODE_BS_BUCKET_MIN=1
@@ -537,7 +538,7 @@ launch_vllm_server() {
     if [ "$KV_CONNECTOR" = "lmcache" ]; then
       KV_CONNECTOR_ARGS+=(
         --kv-transfer-config
-	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"false\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
+	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"true\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
       )
     else
       KV_CONNECTOR_ARGS+=(
