@@ -399,6 +399,8 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   unset VLLM_PROMPT_CTX_BUCKET_MAX
   export VLLM_PROMPT_CTX_BUCKET_STEP=64
   RPC_PORT="producer"
+  export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config.yaml"
+
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
@@ -447,6 +449,7 @@ else
   export VLLM_DECODE_BLOCK_BUCKET_STEP=32
   export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
   RPC_PORT="consumer"
+  export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config.yaml"
 fi
 
 # Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
