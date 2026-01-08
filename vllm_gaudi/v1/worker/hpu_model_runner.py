@@ -2155,8 +2155,10 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         # slot_mapping, such that the attention KV cache insertion
         # logic knows to ignore those indicies. Otherwise, the
         # padding data can be dummy since we have a causal mask.
-
+        print(" _prepare_decode_inputs<0> num_decodes, dp size, dp rank=", num_decodes, self.parallel_config.data_parallel_size, self.parallel_config.data_parallel_rank)
         num_pad_across_dp = self.get_dp_padding(num_decodes)
+
+        print(" _prepare_decode_inputs<1> num_pad_across_dp, rank=", num_pad_across_dp, self.parallel_config.data_parallel_rank)
         if num_decodes == 0:
             if num_pad_across_dp > 0:
                 dummy_decode_input_data = self._create_dummy_decode_input_data()
@@ -3248,6 +3250,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         num_decodes = len(pd_info.decode_req_ids)
         num_prefills = len(pd_info.prompt_req_ids)
         num_reqs = num_decodes + num_prefills
+        print(" num_prefills, num_decodes=", num_prefills, num_decodes)
         with self.profiler.record_event('internal', 'prepare_input_tensors'):
             prefill_input_data, decode_input_data = self._prepare_inputs(scheduler_output, num_prefills, num_decodes,
                                                                          warmup_mode)
@@ -3269,6 +3272,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if not warmup_mode:
             if LMCacheConnectorMetadata is not None and isinstance(scheduler_output.kv_connector_metadata,
                                                                    LMCacheConnectorMetadata):
+                '''
                 aaa = prefill_data.token_ids
                 if isinstance(aaa, torch.Tensor):
                     num_tokens = aaa.numel()
@@ -3284,6 +3288,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                         self.maybe_setup_kv_connector(scheduler_output)
                 else:
                     with set_forward_context(None, self.vllm_config):
+                        self.maybe_setup_kv_connector(scheduler_output)
+                '''
+                with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
                         self.maybe_setup_kv_connector(scheduler_output)
 
             else:
