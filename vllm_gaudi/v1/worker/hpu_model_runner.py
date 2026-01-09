@@ -2565,9 +2565,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             #if self.max_cudagraph_capture_size is not None and batch_size * seq_len > self.max_cudagraph_capture_size:
             if self.max_cudagraph_capture_size is not None and attn_metadata.is_prompt and batch_size * seq_len > self.max_cudagraph_capture_size:
                 use_graphs = False
-            #if attn_metadata.is_prompt and num_blocks != 0:
-            #    use_graphs = False
-            use_graphs = False
+            if attn_metadata.is_prompt and num_blocks != 0:
+                use_graphs = False
+            #use_graphs = False
 
             additional_kwargs.update({"bypass_hpu_graphs": not use_graphs})
         else:
@@ -3289,7 +3289,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     with set_forward_context(None, self.vllm_config):
                         self.maybe_setup_kv_connector(scheduler_output)
                 '''
-                with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
+                with set_forward_context(None, self.vllm_config):
                     self.maybe_setup_kv_connector(scheduler_output)
 
             else:
