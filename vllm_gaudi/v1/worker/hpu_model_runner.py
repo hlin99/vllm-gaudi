@@ -3289,7 +3289,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     with set_forward_context(None, self.vllm_config):
                         self.maybe_setup_kv_connector(scheduler_output)
                 '''
-                with set_forward_context(None, self.vllm_config):
+                with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
                     self.maybe_setup_kv_connector(scheduler_output)
 
             else:
