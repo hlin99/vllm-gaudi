@@ -76,6 +76,7 @@ EXAMPLES:
 
 EOF
 }
+export MC_MS_AUTO_DISC=0
 
 export VLLM_DEVELOPER_MODE=1
 # Default values
