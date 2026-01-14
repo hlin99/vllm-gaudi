@@ -22,7 +22,9 @@ def _hpu_data_ptr(tensor_self) -> int:
     """
     # The first `self` refers to the class instance (from the outer scope)
     # The `tensor_self` is the tensor instance on which .data_ptr() is called
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! _hpu_data_ptr  !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     if tensor_self.device.type == 'hpu':
+        print("hpu path")
         #return htexp._data_ptr(tensor_self)
         v_dataptr = original_data_ptr(tensor_self)
         if v_dataptr not in global_data_ptr_record:
@@ -31,7 +33,7 @@ def _hpu_data_ptr(tensor_self) -> int:
         else:
             p_dataptr = global_data_ptr_record[v_dataptr]
         return p_dataptr
-
+    print("cpu path")
     # Fallback to the original implementation for CPU tensors or host buffers
     return original_data_ptr(tensor_self)
 
