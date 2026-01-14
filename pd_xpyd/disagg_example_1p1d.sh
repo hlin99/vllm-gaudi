@@ -117,16 +117,16 @@ main() {
 
     # Launch the proxy first
     python3 lmcache_proxy_server.py \
-        --host 0.0.0.0 \
+        --host localhost \
         --port 8868 \
-        --prefiller-host 10.239.129.9 \
+        --prefiller-host localhost \
         --prefiller-port 8300 \
         --num-prefillers 1 \
-        --decoder-host 10.239.129.81 \
+        --decoder-host localhost \
         --decoder-port 9300  \
         --decoder-init-port 7300 \
         --decoder-alloc-port 7400 \
-        --proxy-host 10.239.129.9 \
+        --proxy-host localhost \
         --proxy-port 7500 \
         --num-decoders 1 \
         > >(tee proxy.log)    2>&1 &
