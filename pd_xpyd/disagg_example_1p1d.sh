@@ -77,14 +77,23 @@ cleanup() {
 }
 
 wait_for_server() {
+  local host
   local port=$1
   local timeout_seconds=1200
   local start_time=$(date +%s)
 
-  echo "Waiting for server on port $port..."
+  if [ $# -eq 1 ]; then
+    host="localhost"
+    port="$1"
+  else
+    host="$1"
+    port="$2"
+  fi
+
+  echo "Waiting for server on host $host, port $port..."
 
   while true; do
-    if curl -s "localhost:${port}/v1/completions" > /dev/null; then
+    if curl -s "${host}:${port}/v1/completions" > /dev/null; then
       return 0
     fi
 
@@ -98,6 +107,8 @@ wait_for_server() {
   done
 }
 
+PREFILL_IP=10.239.129.9
+DECODE_IP=10.239.129.9
 
 main() {
     #check_hf_token
@@ -117,16 +128,16 @@ main() {
 
     # Launch the proxy first
     python3 lmcache_proxy_server.py \
-        --host localhost \
+        --host 0.0.0.0 \
         --port 8868 \
-        --prefiller-host localhost \
+        --prefiller-host $PREFILL_IP \
         --prefiller-port 8300 \
         --num-prefillers 1 \
-        --decoder-host localhost \
+        --decoder-host $DECODE_IP \
         --decoder-port 9300  \
         --decoder-init-port 7300 \
         --decoder-alloc-port 7400 \
-        --proxy-host localhost \
+        --proxy-host 0.0.0.0 \
         --proxy-port 7500 \
         --num-decoders 1 \
         > >(tee proxy.log)    2>&1 &
@@ -146,10 +157,12 @@ main() {
     #    > >(tee prefiller.log) 2>&1 &
     #prefiller_pid=$!
     #PIDS+=($prefiller_pid)
-
-    wait_for_server 8300
-    wait_for_server 9300
-    wait_for_server 8868
+    echo " 1 ---- "
+    wait_for_server $PREFILL_IP 8300
+    echo " 2 ---- "
+    wait_for_server $DECODE_IP 9300
+    echo " 3 ---- "
+    wait_for_server 0.0.0.0 8868
 
     echo "==================================================="
     echo "All servers are up. You can send request now..."

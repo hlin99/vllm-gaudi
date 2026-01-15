@@ -4,7 +4,7 @@ max_local_cpu_size: 5
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "sender"
-pd_proxy_host: localhost
+pd_proxy_host: 10.239.129.9
 pd_proxy_port: 7500
   #pd_buffer_size: 1079377920 # 1GB
 pd_buffer_size: 1019215872 # 1GB

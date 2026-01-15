@@ -242,11 +242,13 @@ async def zmq_pull_server():
     except zmq.ZMQError:
         logger.exception("ZMQ proxy server failed to bind on %s", proxy_url)
         return
-    logger.info("ZMQ proxy server started on %s", proxy_url)
+    logger.error("ZMQ proxy server started on %s", proxy_url)
 
     while run_proxy:
         try:
+            logger.error(" recv +++ ")
             msg_bytes = await socket.recv()
+            logger.error(" recv --- ")
         except zmq.Again:
             await asyncio.sleep(0.01)  # Avoid busy loop
             continue
@@ -259,6 +261,7 @@ async def zmq_pull_server():
 
         try:
             msg = msgspec.msgpack.decode(msg_bytes, type=PDMsg)
+            logger.error("msg=%s", msg)
         except msgspec.DecodeError as exc:
             logger.warning("ZMQ received non-PD message: %s", exc)
             continue
@@ -267,12 +270,12 @@ async def zmq_pull_server():
             continue
 
         if not isinstance(msg, ProxyNotif):
-            logger.debug("ZMQ ignored message type: %s", type(msg).__name__)
+            logger.error("ZMQ ignored message type: %s", type(msg).__name__)
             continue
 
         req_id = msg.req_id
         app.state.finished_reqs[req_id] += 1
-        logger.debug("Prefill of req %s done.", req_id)
+        logger.error("Prefill of req %s done.", req_id)
 
     socket.close()
     logger.info("ZMQ PULL server stopped.")
@@ -324,7 +327,7 @@ def round_robin_pick_clients() -> tuple[ClientInfo, ClientInfo, ClientInfo]:
 async def wait_decode_kv_ready(req_id: str, num_tp_rank: int):
     while app.state.finished_reqs[req_id] < num_tp_rank:
         await asyncio.sleep(0.0001)  # sleep for 0.1 ms
-    logger.debug(f"Prefill node signaled kv ready for req {req_id}")
+    logger.error(f"Prefill node signaled kv ready for req {req_id}")
     app.state.finished_reqs.pop(req_id)
 
 
@@ -358,14 +361,14 @@ async def handle_completions(request: Request):
     global counter, stats_calculator
     counter += 1
     req_id = str(counter)  # we use counter as req_id
-    print(" /v1/completions: 0")
+    logger.error(" /v1/completions: 0")
     st = time.time()
     try:
         req_data = await request.json()
 
         # Pick tokenization, prefill and decode client
         tokenization_client, prefill_client, decode_client = pick_up_clients(request)
-        print("tokenization_client, prefill_client, decode_client=", tokenization_client, prefill_client, decode_client)
+        logger.error("tokenization_client=%s, prefill_client=%s, decode_client=%s", tokenization_client, prefill_client, decode_client)
         tokenize_output = await send_request_to_service(
             tokenization_client.client, "/tokenize", {"prompt": req_data["prompt"]}
         )
@@ -390,19 +393,19 @@ async def handle_completions(request: Request):
 
         req_data["stream"] = False
         stream_options = req_data.pop("stream_options", None)
-        print(" /v1/completions: 1")
+        logger.error(" /v1/completions: 1")
 
         # Send request to prefill service, ignore the response
         prefill_output = await send_request_to_service(
             prefill_client.client, "/v1/completions", req_data
         )
-        print(" /v1/completions: 2")
+        logger.error(" /v1/completions: 2")
 
         prefill_output = prefill_output.json()
 
         et = time.time()
         stats_calculator.add(et - st)
-        print(" /v1/completions: 3")
+        logger.error(" /v1/completions: 3")
 
         req_data["max_tokens"] = org_max_tokens - 1
         req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
@@ -413,7 +416,7 @@ async def handle_completions(request: Request):
 
         # Stream response from decode servic
         async def generate_stream():
-            print(" /v1/completions: x")
+            logger.error(" /v1/completions: x")
 
             head_chunk = {
                 "id": prefill_output["id"],
@@ -444,8 +447,8 @@ async def handle_completions(request: Request):
                 decode_client.client, "/v1/completions", req_data
             ):
                 yield chunk
-            print(" /v1/completions: 7")
-        print(" /v1/completions: zzZ")
+            logger.error(" /v1/completions: 7")
+        logger.error(" /v1/completions: zzZ")
 
         return StreamingResponse(generate_stream(), media_type="text/event-stream")
 
