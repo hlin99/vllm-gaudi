@@ -108,7 +108,7 @@ wait_for_server() {
 }
 
 PREFILL_IP=10.239.129.9
-DECODE_IP=10.239.129.9
+DECODE_IP=10.239.129.81
 
 main() {
     #check_hf_token
