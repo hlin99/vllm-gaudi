@@ -162,7 +162,7 @@ main() {
     echo " 2 ---- "
     wait_for_server $DECODE_IP 9300
     echo " 3 ---- "
-    wait_for_server 0.0.0.0 8868
+    wait_for_server 8868
 
     echo "==================================================="
     echo "All servers are up. You can send request now..."
