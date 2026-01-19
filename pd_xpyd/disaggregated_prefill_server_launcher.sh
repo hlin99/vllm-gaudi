@@ -323,7 +323,7 @@ if [ ! -d "$LOG_DIR_FULL" ]; then
   fi
 fi
 
-if [ "$KV_CONNECTOR" = "lmcache" ]; then
+if [[ "$KV_CONNECTOR" = *lmcache* ]]; then
     echo "kv connector is lmcache"
     export PYTHONHASHSEED=0
     export PT_HPU_GPU_MIGRATION=1
@@ -400,8 +400,11 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   unset VLLM_PROMPT_CTX_BUCKET_MAX
   export VLLM_PROMPT_CTX_BUCKET_STEP=64
   RPC_PORT="producer"
-  export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config.yaml"
-
+  if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
+    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-prefiller-config.yaml"
+  else
+    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config.yaml"
+  fi
 else
   KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
@@ -450,7 +453,11 @@ else
   export VLLM_DECODE_BLOCK_BUCKET_STEP=32
   export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
   RPC_PORT="consumer"
-  export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config.yaml"
+  if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
+    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-decoder-config.yaml"
+  else
+    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config.yaml"
+  fi
 fi
 
 # Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
@@ -540,11 +547,19 @@ launch_vllm_server() {
 
     KV_CONNECTOR_ARGS=()
     if [ "$KV_CONNECTOR" = "lmcache" ]; then
+      echo "lmcache-nixl connector"
       KV_CONNECTOR_ARGS+=(
         --kv-transfer-config
 	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"true\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
       )
+    elif [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
+      echo "lmcache-mooncake connector"
+      KV_CONNECTOR_ARGS+=(
+        --kv-transfer-config
+        "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"true\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
+      )
     else
+      echo "native nixl connector"
       KV_CONNECTOR_ARGS+=(
         --kv-transfer-config
         "{\"kv_connector\":\"NixlConnector\",\"kv_role\":\"${KV_ROLE}\",\"kv_buffer_device\":\"${NIXL_BUFFER_DEVICE}\",\"kv_connector_extra_config\":{\"backends\":[\"${VLLM_NIXL_BACKEND}\"]}}"
