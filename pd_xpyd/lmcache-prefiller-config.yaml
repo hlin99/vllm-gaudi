@@ -10,3 +10,6 @@ pd_buffer_size: 4317511680 # 1GB
     #pd_buffer_size: 1019215872 # 1GB
 pd_buffer_device: "cuda"
 nixl_backends: [UCX]
+
+save_unfull_chunk: true
+

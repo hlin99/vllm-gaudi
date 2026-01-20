@@ -23,7 +23,8 @@ remote_url: "mooncakestore://10.239.129.9:50001/"
 max_local_cpu_size: 2  # small local buffer
   #numa_mode: "auto"      # reduce tail latency with multi-NUMA/multi-NIC
 pre_caching_hash_algorithm: sha256_cbor_64bit
-blocking_timeout_secs: 10
+blocking_timeout_secs: 200
+save_unfull_chunk: true
 
 extra_config:
   #  remote_enable_mla_worker_id_as0: true

@@ -548,15 +548,22 @@ launch_vllm_server() {
     KV_CONNECTOR_ARGS=()
     if [ "$KV_CONNECTOR" = "lmcache" ]; then
       echo "lmcache-nixl connector"
-      KV_CONNECTOR_ARGS+=(
-        --kv-transfer-config
-	"{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"true\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
-      )
+      if [ "$SERVER_ROLE" == "prefill" ]; then
+        KV_CONNECTOR_ARGS+=(
+          --kv-transfer-config
+          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
+        )
+      else
+	KV_CONNECTOR_ARGS+=(
+          --kv-transfer-config
+          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":1}}"
+        )
+      fi
     elif [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
       echo "lmcache-mooncake connector"
       KV_CONNECTOR_ARGS+=(
         --kv-transfer-config
-        "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"discard_partial_chunks\":\"true\",\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
+        "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
       )
     else
       echo "native nixl connector"
