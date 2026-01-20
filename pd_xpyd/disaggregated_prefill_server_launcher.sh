@@ -561,10 +561,17 @@ launch_vllm_server() {
       fi
     elif [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
       echo "lmcache-mooncake connector"
-      KV_CONNECTOR_ARGS+=(
-        --kv-transfer-config
-        "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
-      )
+      if [ "$SERVER_ROLE" == "prefill" ]; then
+      	KV_CONNECTOR_ARGS+=(
+          --kv-transfer-config
+          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\"}}"
+        )
+      else
+	KV_CONNECTOR_ARGS+=(
+          --kv-transfer-config
+          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":1}}"
+        )
+      fi
     else
       echo "native nixl connector"
       KV_CONNECTOR_ARGS+=(
