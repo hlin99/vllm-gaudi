@@ -25,6 +25,7 @@ pre_caching_hash_algorithm: sha256_cbor_64bit
 retry_times: 0
 retry_intervals_ms: 0
 save_unfull_chunk: true
+lookup_timeout_ms: 50000
 
 extra_config:
   #  remote_enable_mla_worker_id_as0: true

@@ -569,7 +569,7 @@ launch_vllm_server() {
       else
 	KV_CONNECTOR_ARGS+=(
           --kv-transfer-config
-          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":1}}"
+          "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
         )
       fi
     else
