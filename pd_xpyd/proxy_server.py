@@ -25,6 +25,15 @@ from fastapi.responses import JSONResponse, StreamingResponse, PlainTextResponse
 from transformers import AutoTokenizer
 from asyncio import CancelledError
 
+import msgspec
+import zmq
+import zmq.asyncio
+from contextlib import asynccontextmanager
+from lmcache.v1.storage_backend.pd_backend import (
+    PDMsg,
+    ProxyNotif,
+)
+
 formatter = logging.Formatter(
     "[%(asctime)s] %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
 )
@@ -59,6 +68,14 @@ AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
     total=None, connect=None, sock_read=None, sock_connect=None
 )
 
+def csv_ints(s):
+    return [int(x) for x in s.split(",")]
+
+
+def csv_strs(s):
+    return [x.strip() for x in s.split(",")]
+
+counter = 0
 
 async def D_first_token_generator(
     generator_d,
@@ -84,7 +101,80 @@ class SchedulingPolicy(ABC):
     @abstractmethod
     def schedule(self, cycler: itertools.cycle):
         raise NotImplementedError("Scheduling Proxy is not set.")
+zmq_ctx = zmq.asyncio.Context()
+run_proxy = True  # Shutdown flag
 
+async def zmq_pull_server():
+    print("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+    socket = zmq_ctx.socket(zmq.PULL)
+ 
+    proxy_url = f"{global_args.proxy_host}:{global_args.proxy_port}"
+    print("::::::::::::::")
+    try:
+        socket.bind(f"tcp://{proxy_url}")
+    except zmq.ZMQError:
+        logger.exception("ZMQ proxy server failed to bind on %s", proxy_url)
+        return
+    logger.error("ZMQ proxy server started on %s", proxy_url)
+
+    while run_proxy:
+        try:
+            logger.error(" recv +++ ")
+            msg_bytes = await socket.recv()
+            logger.error(" recv --- ")
+        except zmq.Again:
+            await asyncio.sleep(0.01)  # Avoid busy loop
+            continue
+        except zmq.ZMQError as exc:
+            if exc.errno in (zmq.ETERM, zmq.ENOTSOCK):
+                break
+            logger.warning("ZMQ recv error: %s", exc)
+            await asyncio.sleep(0.05)
+            continue
+
+        try:
+            msg = msgspec.msgpack.decode(msg_bytes, type=PDMsg)
+            logger.error("msg=%s", msg)
+        except msgspec.DecodeError as exc:
+            logger.warning("ZMQ received non-PD message: %s", exc)
+            continue
+        except Exception as exc:
+            logger.exception("ZMQ message decode failed: %s", exc)
+            continue
+
+        if not isinstance(msg, ProxyNotif):
+            logger.error("ZMQ ignored message type: %s", type(msg).__name__)
+            continue
+
+        req_id = msg.req_id
+        app.state.finished_reqs[req_id] += 1
+        logger.error("Prefill of req %s done.", req_id)
+    print("xyzxyz")
+    socket.close(linger=0)
+    print("xyzxyz 111")
+
+    logger.info("ZMQ PULL server stopped.")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager to handle startup and shutdown events.
+    """
+    # Startup: Initialize clients
+    app.state.zmq_task = asyncio.create_task(zmq_pull_server())
+    print("aaaaaaaaaaaa")
+    yield
+    print("bbbbbbbbbbbbbbbb")
+    
+    global run_proxy
+    run_proxy = False
+
+    app.state.zmq_task.cancel()
+    try:
+        await app.state.zmq_task
+    except asyncio.CancelledError:
+        logger.info("ZMQ task forced to stop.")
+    print("cccccccccccccccccccccccccc")
 
 class Proxy:
 
@@ -103,6 +193,7 @@ class Proxy:
         benchmark_mode: bool = False,
         repeat_p_request: int = 1,
         repeat_d_times: int = 511,
+        lmcache_nixl: bool = False,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -120,6 +211,8 @@ class Proxy:
         self.benchmark_mode = benchmark_mode
         self.repeat_p_request = repeat_p_request
         self.repeat_d_times = repeat_d_times
+
+        self.lmcache_nixl = lmcache_nixl
 
     def on_done(
         self,
@@ -530,7 +623,8 @@ class Proxy:
                 raise
 
     async def send_request_to_service(
-        self, instance: str, endpoint: str, req_data: dict, request_id: str
+        self, instance: str, endpoint: str, req_data: dict, request_id: str,
+        decode_instance: str = None
     ):  # yapf: disable
         """
         Send a request to a service using a client from the pool.
@@ -554,6 +648,19 @@ class Proxy:
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
             "X-Request-Id": request_id,
         }
+
+        global global_args, counter
+        disagg_spec = {
+            "req_id": str(counter),
+            "receiver_host": "10.239.129.81",
+            "receiver_init_port": [7300],
+            "receiver_alloc_port": [7400],
+        }
+        req_data["kv_transfer_params"] = {
+            "ret_first_tok": False,
+            "disagg_spec": disagg_spec,
+        }
+        counter += 1
 
         prefiller_base_url = f"http://{instance}/"
         client = httpx.AsyncClient(timeout=None, base_url=prefiller_base_url)
@@ -656,10 +763,13 @@ class Proxy:
             prefill_instance = self.schedule(
                 self.prefill_cycler, is_prompt=True, request_len=total_length
             )
+            decode_instance = self.schedule(
+                self.decode_cycler, is_prompt=False, request_len=total_length
+            )
 
             # Send request to prefill service
             response = await self.send_request_to_service(
-                prefill_instance, "/v1/completions", kv_prepare_request, request_id
+                prefill_instance, "/v1/completions", kv_prepare_request, request_id, decode_instance
             )  # yapf: disable
 
             # Perform kv recv and decoding stage
@@ -671,9 +781,6 @@ class Proxy:
             # Perform kv recv and decoding stage
             self.handle_benchmark_mode_requests(request)
 
-            decode_instance = self.schedule(
-                self.decode_cycler, is_prompt=False, request_len=total_length
-            )
             try:
                 generator_d = self.forward_request(
                     f"http://{decode_instance}/v1/completions", request, request_id
@@ -1043,6 +1150,7 @@ class ProxyServer:
             for instance_spec in args.decode:
                 decoder_instances.extend(parse_instance_spec(instance_spec))
         self.validate_parsed_serve_args(prefiller_instances, decoder_instances)
+        print("lmcache_nixl=", args.lmcache_nixl)
         self.proxy_instance = Proxy(
             prefill_instances=prefiller_instances,
             decode_instances=decoder_instances,
@@ -1057,6 +1165,7 @@ class ProxyServer:
             benchmark_mode=args.benchmark_mode,
             repeat_p_request=args.repeat_p_request,
             repeat_d_times=args.repeat_d_times,
+            lmcache_nixl=args.lmcache_nixl
         )
 
     def validate_parsed_serve_args(self, prefills: list, decodes: list):
@@ -1101,7 +1210,8 @@ class ProxyServer:
                 ) from e
 
     def run_server(self):
-        app = FastAPI()
+        app = FastAPI(lifespan=lifespan)
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -1177,7 +1287,22 @@ if __name__ == "__main__":
         help="the times to repeat on d node",
     )
 
+    parser.add_argument(
+        "--lmcache_nixl",
+        action="store_true",
+        default=False,
+        help="Enable the LMCache nixl backend for Prefill-Decoding (PD)",
+    )
+
+    parser.add_argument("--proxy-host", type=str, default="0.0.0.0")
+    parser.add_argument("--proxy-port", type=int, default=7500)
+
+    parser.add_argument("--decoder-init-port", type=csv_ints, default=[7300])
+    parser.add_argument("--decoder-alloc-port", type=csv_ints, default=[7400])
+
     args = parser.parse_args()
+    global global_args
+    global_args = parser.parse_args()
 
     # Set proxy bypass environment variables if requested
     if args.bypass_proxy:

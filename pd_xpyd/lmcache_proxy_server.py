@@ -410,7 +410,7 @@ async def handle_completions(request: Request):
         req_data["max_tokens"] = org_max_tokens - 1
         # req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
         req_data.pop("kv_transfer_params")
-        req_data["stream"] = True
+        req_data["stream"] = request.get("stream", False)
         if stream_options is not None:
             req_data["stream_options"] = stream_options
 
@@ -449,8 +449,13 @@ async def handle_completions(request: Request):
                 yield chunk
             logger.error(" /v1/completions: 7")
         logger.error(" /v1/completions: zzZ")
-
-        return StreamingResponse(generate_stream(), media_type="text/event-stream")
+        
+        media_type = (
+            "text/event-stream"
+            if request.get("stream", False)
+            else "application/json"
+        )
+        return StreamingResponse(generate_stream(), media_type=media_type)
 
     except Exception as e:
         # Standard
@@ -524,10 +529,10 @@ async def handle_chat_completions(request: Request):
             req_data["max_completion_tokens"] = org_max_completion_tokens - 1
 
         # Add the first token from prefill to the tokenized messages for decode
-        req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
+        # req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
 
         req_data.pop("kv_transfer_params")
-        req_data["stream"] = True
+        req_data["stream"] = request.get("stream", False)
         if stream_options is not None:
             req_data["stream_options"] = stream_options
 
@@ -618,7 +623,12 @@ async def handle_chat_completions(request: Request):
                 else:
                     yield chunk
 
-        return StreamingResponse(generate_stream(), media_type="application/json")
+        media_type = (
+            "text/event-stream"
+            if request.get("stream", False)
+            else "application/json"
+        )
+        return StreamingResponse(generate_stream(), media_type=media_type)
 
     except Exception as e:
         # Standard
