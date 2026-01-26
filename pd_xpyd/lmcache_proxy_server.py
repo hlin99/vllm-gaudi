@@ -369,13 +369,13 @@ async def handle_completions(request: Request):
         # Pick tokenization, prefill and decode client
         tokenization_client, prefill_client, decode_client = pick_up_clients(request)
         logger.error("tokenization_client=%s, prefill_client=%s, decode_client=%s", tokenization_client, prefill_client, decode_client)
-        tokenize_output = await send_request_to_service(
-            tokenization_client.client, "/tokenize", {"prompt": req_data["prompt"]}
-        )
-        tokenize_output = tokenize_output.json()
+        # tokenize_output = await send_request_to_service(
+        #     tokenization_client.client, "/tokenize", {"prompt": req_data["prompt"]}
+        # )
+        # tokenize_output = tokenize_output.json()
 
         org_max_tokens = req_data["max_tokens"]
-        req_data["prompt"] = tokenize_output["tokens"]
+        # /req_data["prompt"] = tokenize_output["tokens"]
         req_data["max_tokens"] = 1
 
         disagg_spec = {
@@ -385,7 +385,7 @@ async def handle_completions(request: Request):
             "receiver_alloc_port": decode_client.alloc_port,
         }
         num_tp_rank = len(decode_client.init_port or [])
-
+        print(" num_tp_rank= ", num_tp_rank)
         req_data["kv_transfer_params"] = {
             "ret_first_tok": True,
             "disagg_spec": disagg_spec,
@@ -408,7 +408,7 @@ async def handle_completions(request: Request):
         logger.error(" /v1/completions: 3")
 
         req_data["max_tokens"] = org_max_tokens - 1
-        req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
+        # req_data["prompt"].append(prefill_output["kv_transfer_params"]["first_tok"])
         req_data.pop("kv_transfer_params")
         req_data["stream"] = True
         if stream_options is not None:
