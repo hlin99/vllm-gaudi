@@ -1,0 +1,15 @@
+local_cpu: False
+
+enable_pd: True
+transfer_channel: "nixl"
+pd_role: "receiver"
+pd_peer_host: "192.168.100.221"
+pd_peer_init_port: 7300
+pd_peer_alloc_port: 7400
+pd_buffer_size: 4317511680 # 1GB
+  #pd_buffer_size: 1019215872 # 1GB
+pd_buffer_device: "cpu"
+nixl_backends: [UCX]
+
+save_unfull_chunk: true
+

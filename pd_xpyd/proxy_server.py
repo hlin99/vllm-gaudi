@@ -648,11 +648,30 @@ class Proxy:
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
             "X-Request-Id": request_id,
         }
+        xxx = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
+        yyy = decode_instance.split(':')[1] if decode_instance else "0"
+        print("xxx=", xxx)
 
+        raw_ip = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
+        raw_port = decode_instance.split(':')[1] if decode_instance else "9300"
+        
+        last_two_digits = int(raw_port) % 100
+        offset = last_two_digits % 8
+
+        ip_parts = raw_ip.split('.')
+        base_last_octet = int(ip_parts[3])
+        new_last_octet = base_last_octet + offset
+
+        xxx = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
+        yyy = raw_port
+        
+        print(f"Original Port: {yyy}, Offset: {offset}")
+        print(f"Calculated IP (xxx): {xxx}")
+        
         global global_args, counter
         disagg_spec = {
             "req_id": str(counter),
-            "receiver_host": "10.239.129.81",
+            "receiver_host": xxx,
             "receiver_init_port": [7300],
             "receiver_alloc_port": [7400],
         }

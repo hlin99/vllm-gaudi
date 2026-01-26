@@ -460,7 +460,7 @@ else
   fi
 fi
 
-# Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
+# heck if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
 if (( DP_SIZE != 1 && DP_SIZE != NUM_LOCAL_INSTANCES * NODE_SIZE )); then
   echo "Error: DP_SIZE ($DP_SIZE) must be 1 or equal to NUM_LOCAL_INSTANCES ($NUM_LOCAL_INSTANCES) * NODE_SIZE ($NODE_SIZE)"
   exit 1
@@ -491,7 +491,8 @@ launch_vllm_server() {
     PORT=$((BASE_PORT+8*NODE_RANK+i))
     # Calculate side channel port. Avoid clash with with TP workers. 
     SIDE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+8*NODE_RANK+i))
-
+    GLOBAL_ID=$(( (NODE_RANK * 8) + i ))
+    echo "Local Rank (i): $i | Node Rank: $NODE_RANK | Global ID: $GLOBAL_ID"
     echo "Starting local instance $i on node $NODE_RANK, port $PORT"
 
     DP_ARGS=()
@@ -554,6 +555,7 @@ launch_vllm_server() {
           "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
         )
       else
+	export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config${GLOBAL_ID}.yaml"
 	KV_CONNECTOR_ARGS+=(
           --kv-transfer-config
           "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
