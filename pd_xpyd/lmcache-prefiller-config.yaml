@@ -1,9 +1,14 @@
 local_cpu: True
 max_local_cpu_size: 5
 
+remote_url: "lm://10.239.129.9:8888"
+remote_serde: "cachegen"
+
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "sender"
+pd_retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
+  #pd_store_location: "PDBackend"
 pd_proxy_host: 10.239.129.9
 pd_proxy_port: 7500
 pd_buffer_size: 4317511680 # 1GB

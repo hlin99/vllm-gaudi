@@ -406,7 +406,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config.yaml"
   fi
 else
-  KV_ROLE="kv_consumer"
+  KV_ROLE="kv_both"
   BASE_PORT=$((BASE_PORT+1000))
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))
