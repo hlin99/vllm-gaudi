@@ -31,14 +31,15 @@ def chat():
     with open(log_filename, "a", encoding="utf-8") as log_file:
         while True:
             try:
-                user_input = input(f"{GREEN}海哥 >> {RESET}")
+                user_input = input(f"{GREEN}Boss >> {RESET}")
                 if user_input.lower() in ['exit', 'quit']: break
                 if not user_input.strip(): continue
 
+                is_first_turn = (len(current_context_ids) == 0)
                 # 1. Encode new turn text. 
                 # Add BOS (special token) only if it's the very first message.
                 new_turn_text = f"User: {user_input}\nAssistant: "
-                new_ids = tokenizer.encode(new_turn_text, add_special_tokens=False)
+                new_ids = tokenizer.encode(new_turn_text, add_special_tokens=is_first_turn)
                 
                 # 2. Construct the logical full ID sequence
                 send_ids = current_context_ids + new_ids

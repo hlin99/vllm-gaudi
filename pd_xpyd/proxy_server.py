@@ -149,9 +149,7 @@ async def zmq_pull_server():
         req_id = msg.req_id
         app.state.finished_reqs[req_id] += 1
         logger.error("Prefill of req %s done.", req_id)
-    print("xyzxyz")
     socket.close(linger=0)
-    print("xyzxyz 111")
 
     logger.info("ZMQ PULL server stopped.")
 
@@ -162,9 +160,7 @@ async def lifespan(app: FastAPI):
     """
     # Startup: Initialize clients
     app.state.zmq_task = asyncio.create_task(zmq_pull_server())
-    print("aaaaaaaaaaaa")
     yield
-    print("bbbbbbbbbbbbbbbb")
     
     global run_proxy
     run_proxy = False
@@ -174,7 +170,6 @@ async def lifespan(app: FastAPI):
         await app.state.zmq_task
     except asyncio.CancelledError:
         logger.info("ZMQ task forced to stop.")
-    print("cccccccccccccccccccccccccc")
 
 class Proxy:
 
@@ -588,12 +583,9 @@ class Proxy:
         fake_tokens = []
         fake_len = 100
 
-        if prompt_token_ids is not None:
-            print("prompt_token_ids=", prompt_token_ids)
 
         if prompt_token_ids is not None and isinstance(prompt_token_ids, list) and len(prompt_token_ids) > 0:
             log_info_blue("Found existing prompt_token_ids, bypassing tokenizer.")
-            print("prompt_token_ids=", prompt_token_ids)
             return prompt_token_ids, len(prompt_token_ids)
 
         if isinstance(prompt, str):
@@ -667,7 +659,6 @@ class Proxy:
         }
         xxx = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
         yyy = decode_instance.split(':')[1] if decode_instance else "0"
-        print("xxx=", xxx)
 
         raw_ip = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
         raw_port = decode_instance.split(':')[1] if decode_instance else "9300"
