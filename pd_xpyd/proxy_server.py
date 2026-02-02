@@ -584,29 +584,46 @@ class Proxy:
         }
         return status
 
-    def get_total_token_length(self, prompt):
+    def get_total_token_length(self, prompt, prompt_token_ids=None):
+        fake_tokens = []
         fake_len = 100
+
+        if prompt_token_ids is not None:
+            print("prompt_token_ids=", prompt_token_ids)
+
+        if prompt_token_ids is not None and isinstance(prompt_token_ids, list) and len(prompt_token_ids) > 0:
+            log_info_blue("Found existing prompt_token_ids, bypassing tokenizer.")
+            print("prompt_token_ids=", prompt_token_ids)
+            return prompt_token_ids, len(prompt_token_ids)
+
         if isinstance(prompt, str):
-            return len(self.tokenizer(prompt)["input_ids"])
+            tokens = self.tokenizer(prompt)["input_ids"]
+            return tokens, len(tokens)
         elif isinstance(prompt, list):
             if all(isinstance(p, str) for p in prompt):
-                return sum(len(self.tokenizer(p)["input_ids"]) for p in prompt)
+                all_tokens = []
+                for p in prompt:
+                    all_tokens.extend(self.tokenizer(p)["input_ids"])
+                return all_tokens, len(all_tokens)
             elif all(
                 isinstance(p, list) and all(isinstance(x, int) for x in p)
                 for p in prompt
             ):
                 # Already tokenized
-                return sum(len(p) for p in prompt)
+                flattened_tokens = list(itertools.chain.from_iterable(prompt))
+                return flattened_tokens, len(flattened_tokens)
+            elif all(isinstance(p, int) for p in prompt):
+                return prompt, len(prompt)
             else:
                 logger.error(
                     "Unsupported prompt format: %s / nested types. Value: %r",
                     type(prompt),
                     prompt,
                 )
-                return fake_len
+                return fake_tokens, fake_len
         else:
             logger.error("Unsupported prompt type: %s", type(prompt))
-            return fake_len
+            return fake_tokens, fake_len
 
     def exception_handler(
         self, prefill_instance=None, decode_instance=None, req_len=None
@@ -771,14 +788,24 @@ class Proxy:
 
             start_time = time.time()
             prompt = kv_prepare_request.get("prompt")
-            total_length = self.get_total_token_length(prompt)
+            prompt_token_ids = kv_prepare_request.get("prompt_token_ids")
+
+            tokens, total_length = self.get_total_token_length(prompt, prompt_token_ids)
             end_time = time.time()
+
+            kv_prepare_request["prompt_token_ids"] = tokens
+            # kv_prepare_request["logprobs"] = True
+            #kv_prepare_request["top_logprobs"] = 1
+
+            request = kv_prepare_request
 
             log_info_green(
                 f"create_completion -- prompt length: {total_length}, "
                 f"tokenizer took "
                 f"{(end_time - start_time) * 1000:.2f} ms"
             )
+            log_info_red(f"DEBUG: tokens type: {type(tokens)}, first 5: {tokens[:5] if tokens else 'None'}")
+
             prefill_instance = self.schedule(
                 self.prefill_cycler, is_prompt=True, request_len=total_length
             )
@@ -797,9 +824,13 @@ class Proxy:
             if kv_transfer_params:
                 request["kv_transfer_params"] = kv_transfer_params
 
+            # request["logprobs"] = 1
+            # request["top_logprobs"] = 1
+            request["echo"] = True
+            request["return_token_ids"] = True
             # Perform kv recv and decoding stage
             self.handle_benchmark_mode_requests(request)
-
+            
             try:
                 generator_d = self.forward_request(
                     f"http://{decode_instance}/v1/completions", request, request_id
