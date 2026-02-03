@@ -36,46 +36,31 @@ def chat():
                 if not user_input.strip(): continue
 
                 is_first_turn = (len(current_context_ids) == 0)
+
+                # if is_first_turn:
+                #    current_context_ids = [0]
                 # 1. Encode new turn text. 
                 # Add BOS (special token) only if it's the very first message.
                 new_turn_text = f"User: {user_input}\nAssistant: "
-                new_ids = tokenizer.encode(new_turn_text, add_special_tokens=is_first_turn)
-                
+                new_ids = tokenizer.encode(new_turn_text, add_special_tokens=False)
+ 
                 # 2. Construct the logical full ID sequence
                 send_ids = current_context_ids + new_ids
-                
+                print(f"DEBUG: current_context_ids len = {len(current_context_ids)}, new_ids len = {len(new_ids)}, send_ids len = {len(send_ids)}")
+
                 # 3. Reconstruct string from IDs to bypass Proxy's "No List" restriction.
                 # Using skip_special_tokens=False is vital to keep the BOS and structural tokens.
                 current_full_prompt = tokenizer.decode(send_ids, skip_special_tokens=False)
 
                 payload = {
                     "model": model_path,
-                    "prompt": current_full_prompt,
-                    "prompt_token_ids": send_ids,
-                    "max_tokens": 4096,
+                    "prompt": send_ids,
+                    "max_tokens": 2020,
                     "temperature": 0,  # Zero temp helps verify hash stability
                     "stream": True,
                     "add_special_tokens": False,
                     "stop": ["User:", "<｜end_of_sentence｜>"]
                 }
-                print("send_ids=", send_ids)
-                import hashlib  # Add this line
-                import numpy as np
-
-                # 假设 prefix_tokens 是前 256 个 ID
-                prefix_array = np.array(send_ids[:256], dtype=np.int32)
-
-                # 注意：具体算法取决于后端实现（vLLM 常用的是对 ID 序列做逻辑合并再 Hash）
-                # 简单的模拟方式如下：
-                local_chunk_hash = hash(prefix_array.tobytes()) 
-                print(f"本地模拟 Hash (十进制): {local_chunk_hash}")
-
-                #prefix_tokens = send_ids[:256]
-                # Convert list of ints to bytes for hashing
-                #token_bytes = json.dumps(prefix_tokens).encode('utf-8')
-                #prefix_hash = hashlib.md5(token_bytes).hexdigest()
-
-                #print(" prefix_hash=", prefix_hash)
                 # Record metadata for debugging hash alignment
                 log_file.write(f"# SENT_PROMPT_LEN_TOKENS: {len(send_ids)}\n")
 
@@ -112,7 +97,7 @@ def chat():
                             p_ids = choice.get('prompt_token_ids')
                             if p_ids:
                                 latest_prompt_ids = p_ids
-                                print(" latest_prompt_ids=", latest_prompt_ids)
+                                # print(" latest_prompt_ids=", latest_prompt_ids)
                         except: continue
 
                 # 5. Synchronize context state for the next turn

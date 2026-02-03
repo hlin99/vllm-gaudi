@@ -584,15 +584,20 @@ class Proxy:
         fake_len = 100
 
 
-        if prompt_token_ids is not None and isinstance(prompt_token_ids, list) and len(prompt_token_ids) > 0:
-            log_info_blue("Found existing prompt_token_ids, bypassing tokenizer.")
-            return prompt_token_ids, len(prompt_token_ids)
+        #if prompt_token_ids is not None and isinstance(prompt_token_ids, list) and len(prompt_token_ids) > 0:
+        #    log_info_blue("Found existing prompt_token_ids, bypassing tokenizer.")
+        #    return prompt_token_ids, len(prompt_token_ids)
+        if prompt_token_ids is not None:
+            print("prompt_token_ids=", prompt_token_ids)
+            print("len(prompt_token_ids)=", len(prompt_token_ids))
 
         if isinstance(prompt, str):
+            print(" prompt is str ")
             tokens = self.tokenizer(prompt)["input_ids"]
             return tokens, len(tokens)
         elif isinstance(prompt, list):
             if all(isinstance(p, str) for p in prompt):
+                print(" prompt is str list ")
                 all_tokens = []
                 for p in prompt:
                     all_tokens.extend(self.tokenizer(p)["input_ids"])
@@ -602,9 +607,11 @@ class Proxy:
                 for p in prompt
             ):
                 # Already tokenized
+                print(" prompt is token list ")
                 flattened_tokens = list(itertools.chain.from_iterable(prompt))
                 return flattened_tokens, len(flattened_tokens)
             elif all(isinstance(p, int) for p in prompt):
+                print(" prompt is tokens ")
                 return prompt, len(prompt)
             else:
                 logger.error(
@@ -784,9 +791,9 @@ class Proxy:
             tokens, total_length = self.get_total_token_length(prompt, prompt_token_ids)
             end_time = time.time()
 
-            kv_prepare_request["prompt_token_ids"] = tokens
+            # kv_prepare_request["prompt_token_ids"] = tokens
             # kv_prepare_request["logprobs"] = True
-            #kv_prepare_request["top_logprobs"] = 1
+            # kv_prepare_request["top_logprobs"] = 1
 
             request = kv_prepare_request
 
