@@ -1,8 +1,8 @@
 local_cpu: True
 max_local_cpu_size: 5
 
-remote_url: "lm://10.239.129.9:8888"
-remote_serde: "cachegen"
+remote_url: "redis://10.239.129.9:6379"
+remote_serde: "native"
 
 enable_pd: True
 transfer_channel: "nixl"
