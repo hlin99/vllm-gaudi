@@ -2562,7 +2562,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         additional_kwargs = {}
         if htorch.utils.internal.is_lazy():
             use_graphs = self._use_graphs()
-            if self.max_cudagraph_capture_size is not None and batch_size * seq_len > self.max_cudagraph_capture_size:
+            if attn_metadata.is_prompt and (num_blocks != 0 or (
+                    self.max_cudagraph_capture_size is not None and 
+                    batch_size * seq_len > self.max_cudagraph_capture_size)):
                 use_graphs = False
             additional_kwargs.update({"bypass_hpu_graphs": not use_graphs})
         else:
