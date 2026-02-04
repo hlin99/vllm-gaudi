@@ -259,6 +259,7 @@ done
 # Environment variables
 export no_proxy=localhost,${no_proxy}
 export VLLM_USE_V1=1
+unset VLLM_SKIP_WARMUP
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
@@ -372,6 +373,7 @@ decode_block_min=$(( ($decode_block_min + $decode_block_step) / $decode_block_st
 decode_block_max=$(( (($input_max + $output_max + $block_size -1) / $block_size + 1) * $decode_bs_max))
 # Set role-specific configurations
 if [ "$SERVER_ROLE" == "prefill" ]; then
+  export VLLM_GRAPH_RESERVED_MEM=0.5
   if [[ "$MAX_MODEL_LEN" -eq 131072 ]]; then
 	  echo "128k model len settings"
 	  export VLLM_CONTIGUOUS_PA=false
@@ -397,9 +399,11 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   if [ "$APC" = false ]; then
     export VLLM_PROMPT_CTX_BUCKET_MAX=0
   fi
-  unset VLLM_PROMPT_CTX_BUCKET_MIN
-  unset VLLM_PROMPT_CTX_BUCKET_MAX
-  export VLLM_PROMPT_CTX_BUCKET_STEP=64
+  export VLLM_PROMPT_CTX_BUCKET_MIN=0
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$((input_max / 128 - 1))
+  export VLLM_PROMPT_CTX_BUCKET_STEP=32
+  export VLLM_EXPONENTIAL_BUCKETING=false
+
   RPC_PORT="producer"
   if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-prefiller-config.yaml"
@@ -426,7 +430,7 @@ else
 
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
-  export VLLM_EXPONENTIAL_BUCKETING=false
+  export VLLM_EXPONENTIAL_BUCKETING=true
   # Bucket settings
   #export VLLM_PROMPT_QUERY_BUCKET_MIN=1
   #export VLLM_PROMPT_QUERY_BUCKET_STEP=1
