@@ -1,0 +1,20 @@
+local_cpu: True
+max_local_cpu_size: 5
+
+remote_url: "redis://10.239.129.9:6379"
+remote_serde: "native"
+
+enable_pd: True
+transfer_channel: "nixl"
+pd_role: "sender"
+pd_retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
+  #pd_store_location: "PDBackend"
+pd_proxy_host: 10.239.129.9
+pd_proxy_port: 7500
+pd_buffer_size: 4317511680 # 1GB
+    #pd_buffer_size: 1019215872 # 1GB
+pd_buffer_device: "cpu"
+nixl_backends: [UCX]
+
+save_unfull_chunk: true
+
