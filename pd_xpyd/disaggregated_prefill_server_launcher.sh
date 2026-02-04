@@ -400,7 +400,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
     export VLLM_PROMPT_CTX_BUCKET_MAX=0
   fi
   export VLLM_PROMPT_CTX_BUCKET_MIN=0
-  export VLLM_PROMPT_CTX_BUCKET_MAX=$((input_max / 128 - 1))
+  export VLLM_PROMPT_CTX_BUCKET_MAX=$((input_max / 128 + 32))
   export VLLM_PROMPT_CTX_BUCKET_STEP=32
   export VLLM_EXPONENTIAL_BUCKETING=false
 
@@ -474,7 +474,7 @@ fi
 # Waits for vLLM to start.
 wait_for_server() {
   local port=$1
-  timeout 1200 bash -c "
+  timeout 120000 bash -c "
     until env http_proxy=\"\" https_proxy=\"\" HTTP_PROXY=\"\" HTTPS_PROXY=\"\" \
           curl -s ${NODE_IP}:${port}/v1/completions > /dev/null; do
       sleep 1
