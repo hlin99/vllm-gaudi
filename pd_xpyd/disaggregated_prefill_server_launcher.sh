@@ -326,6 +326,7 @@ fi
 if [[ "$KV_CONNECTOR" = *lmcache* ]]; then
     echo "kv connector is lmcache"
     export PYTHONHASHSEED=0
+    export PT_HPU_AUTOLOAD=1
     export PT_HPU_GPU_MIGRATION=1
     export LMCACHE_REMOTE_SERDE=naive
     export LMCACHE_CHUNK_SIZE=256
