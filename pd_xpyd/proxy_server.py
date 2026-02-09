@@ -115,13 +115,13 @@ async def zmq_pull_server():
     except zmq.ZMQError:
         logger.exception("ZMQ proxy server failed to bind on %s", proxy_url)
         return
-    logger.error("ZMQ proxy server started on %s", proxy_url)
+    logger.info("ZMQ proxy server started on %s", proxy_url)
 
     while run_proxy:
         try:
-            logger.error(" recv +++ ")
+            logger.info(" recv +++ ")
             msg_bytes = await socket.recv()
-            logger.error(" recv --- ")
+            logger.info(" recv --- ")
         except zmq.Again:
             await asyncio.sleep(0.01)  # Avoid busy loop
             continue

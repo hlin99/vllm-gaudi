@@ -27,15 +27,28 @@ def chat():
 
     print(f"{CYAN}--- PD Disaggregation Proxy Compatibility Mode (Token ID Sync) ---{RESET}")
     print(f"{CYAN}Log File: {log_filename}{RESET}\n")
-
+    default_question = "50000字讲讲鬼故事"
     with open(log_filename, "a", encoding="utf-8") as log_file:
         while True:
             try:
+                is_first_turn = (len(current_context_ids) == 0)
+
+                if is_first_turn and readline is not None:
+                    readline.set_startup_hook(
+                        lambda: readline.insert_text(default_question)
+                    )
+                else:
+                    if readline is not None:
+                        readline.set_startup_hook()
+
                 user_input = input(f"{GREEN}Boss >> {RESET}")
+
+                if readline is not None:
+                    readline.set_startup_hook()
+
                 if user_input.lower() in ['exit', 'quit']: break
                 if not user_input.strip(): continue
 
-                is_first_turn = (len(current_context_ids) == 0)
 
                 # if is_first_turn:
                 #    current_context_ids = [0]
