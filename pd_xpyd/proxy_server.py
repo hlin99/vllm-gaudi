@@ -67,6 +67,8 @@ def log_info_red(msg):
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
     total=None, connect=None, sock_read=None, sock_connect=None
 )
+DEFAULT_DECODER_INIT_PORT = [7300]
+DEFAULT_DECODER_ALLOC_PORT = [7400]
 
 def csv_ints(s):
     return [int(x) for x in s.split(",")]
@@ -75,44 +77,82 @@ def csv_ints(s):
 def csv_strs(s):
     return [x.strip() for x in s.split(",")]
 
-counter = 0
-
 
 def calculate_message_token_length(
-    messages, token_length_getter: Callable[[object], tuple[list[int], int]]
+    messages: list[dict[str, object]],
+    token_length_getter: Callable[[object], tuple[list[int], int]],
 ) -> int:
-    return sum(token_length_getter(message["content"])[1] for message in messages)
+    total_length = 0
+    for message in messages:
+        if "content" not in message:
+            raise ValueError("Each chat message must include a 'content' field.")
+        total_length += token_length_getter(message["content"])[1]
+    return total_length
 
 
-def resolve_decode_receiver(decode_instance: Optional[str]) -> tuple[str, list[int], list[int]]:
-    args = globals().get("global_args")
-    receiver_init_port = list(getattr(args, "decoder_init_port", [7300]))
-    receiver_alloc_port = list(getattr(args, "decoder_alloc_port", [7400]))
+def resolve_decode_receiver(
+    decode_instance: Optional[str],
+    decoder_init_port: Optional[list[int]] = None,
+    decoder_alloc_port: Optional[list[int]] = None,
+) -> tuple[str, list[int], list[int]]:
+    receiver_init_port = list(
+        decoder_init_port
+        if decoder_init_port is not None
+        else DEFAULT_DECODER_INIT_PORT
+    )
+    receiver_alloc_port = list(
+        decoder_alloc_port
+        if decoder_alloc_port is not None
+        else DEFAULT_DECODER_ALLOC_PORT
+    )
     if not decode_instance:
         return "127.0.0.1", receiver_init_port, receiver_alloc_port
 
-    raw_ip, raw_port = decode_instance.rsplit(":", 1)
+    try:
+        raw_ip, raw_port = decode_instance.rsplit(":", 1)
+    except ValueError as exc:
+        raise ValueError(
+            "Invalid decode instance specification. Expected format 'host:port'."
+        ) from exc
+
     if raw_ip == "localhost":
         return raw_ip, receiver_init_port, receiver_alloc_port
 
     ip_parts = raw_ip.split(".")
     if len(ip_parts) != 4:
+        logger.warning(
+            "Unable to derive decode receiver host for %s; using raw host.",
+            decode_instance,
+        )
         return raw_ip, receiver_init_port, receiver_alloc_port
 
     try:
+        # The decode service ports are provisioned in 8-instance groups, so the
+        # last two digits of the port encode the per-group receiver host offset.
         last_two_digits = int(raw_port) % 100
         offset = last_two_digits % 8
         new_last_octet = int(ip_parts[3]) + offset
     except ValueError:
+        logger.warning(
+            "Unable to derive decode receiver host for %s; using raw host.",
+            decode_instance,
+        )
         return raw_ip, receiver_init_port, receiver_alloc_port
 
     receiver_host = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
     return receiver_host, receiver_init_port, receiver_alloc_port
 
 
-def build_disagg_spec(req_id: str, decode_instance: Optional[str]) -> dict[str, object]:
+def build_disagg_spec(
+    req_id: str,
+    decode_instance: Optional[str],
+    decoder_init_port: Optional[list[int]] = None,
+    decoder_alloc_port: Optional[list[int]] = None,
+) -> dict[str, object]:
     receiver_host, receiver_init_port, receiver_alloc_port = resolve_decode_receiver(
-        decode_instance
+        decode_instance,
+        decoder_init_port=decoder_init_port,
+        decoder_alloc_port=decoder_alloc_port,
     )
     return {
         "req_id": req_id,
@@ -234,6 +274,8 @@ class Proxy:
         repeat_p_request: int = 1,
         repeat_d_times: int = 511,
         lmcache_nixl: bool = False,
+        decoder_init_port: Optional[list[int]] = None,
+        decoder_alloc_port: Optional[list[int]] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -253,6 +295,17 @@ class Proxy:
         self.repeat_d_times = repeat_d_times
 
         self.lmcache_nixl = lmcache_nixl
+        self.decoder_init_port = list(
+            decoder_init_port
+            if decoder_init_port is not None
+            else DEFAULT_DECODER_INIT_PORT
+        )
+        self.decoder_alloc_port = list(
+            decoder_alloc_port
+            if decoder_alloc_port is not None
+            else DEFAULT_DECODER_ALLOC_PORT
+        )
+        self.disagg_request_counter = 0
 
     def on_done(
         self,
@@ -746,13 +799,17 @@ class Proxy:
             "X-Request-Id": request_id,
         }
 
-        global counter
-        disagg_spec = build_disagg_spec(str(counter), decode_instance)
+        disagg_spec = build_disagg_spec(
+            str(self.disagg_request_counter),
+            decode_instance,
+            decoder_init_port=self.decoder_init_port,
+            decoder_alloc_port=self.decoder_alloc_port,
+        )
         req_data["kv_transfer_params"] = {
             "ret_first_tok": False,
             "disagg_spec": disagg_spec,
         }
-        counter += 1
+        self.disagg_request_counter += 1
 
         prefiller_base_url = f"http://{instance}/"
         client = httpx.AsyncClient(timeout=None, base_url=prefiller_base_url)
@@ -1223,7 +1280,9 @@ class ProxyServer:
             benchmark_mode=args.benchmark_mode,
             repeat_p_request=args.repeat_p_request,
             repeat_d_times=args.repeat_d_times,
-            lmcache_nixl=args.lmcache_nixl
+            lmcache_nixl=args.lmcache_nixl,
+            decoder_init_port=args.decoder_init_port,
+            decoder_alloc_port=args.decoder_alloc_port,
         )
 
     def validate_parsed_serve_args(self, prefills: list, decodes: list):
