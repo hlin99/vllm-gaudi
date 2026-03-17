@@ -4,6 +4,7 @@ from vllm_gaudi.platform import HpuPlatform
 def register():
     """Register the HPU platform."""
     HpuPlatform.set_torch_compile()
+    HpuPlatform.cuda_post_init()
     return "vllm_gaudi.platform.HpuPlatform"
 
 

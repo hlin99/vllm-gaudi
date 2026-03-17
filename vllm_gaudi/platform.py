@@ -212,6 +212,12 @@ class HpuPlatform(Platform):
                 os.environ['FUSER_ENABLE_MULTI_THREADED_INVOCATIONS'] = '1'
 
     @classmethod
+    def cuda_post_init(cls) -> None:
+        from vllm_gaudi.utils import is_fake_hpu
+        original_is_available = torch.cuda.is_available
+        torch.cuda.is_available = lambda: not is_fake_hpu() or original_is_available()
+
+    @classmethod
     def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str, model_config: ModelConfig) -> bool:
         return kv_cache_dtype == "fp8_inc"
 
