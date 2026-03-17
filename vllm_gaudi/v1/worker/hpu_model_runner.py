@@ -4851,9 +4851,13 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             self.bucketing_manager.num_hpu_blocks = num_blocks
         self._PAD_BLOCK_ID = num_blocks
         self._PAD_SLOT_ID = num_blocks * self.block_size
-
+        print("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$")
         if has_kv_transfer_group():
+            kv_group = get_kv_transfer_group()
+            print(f"KV transfer group type: {type(kv_group).__name__}")
+            print(f"KV transfer group full class: {type(kv_group).__module__}.{type(kv_group).__qualname__}")
             get_kv_transfer_group().register_kv_caches(self.get_kv_caches_4D(kv_caches))
+            print("##############################################################################################")
             if self.vllm_config.kv_transfer_config.kv_buffer_device == "cpu":
                 get_kv_transfer_group().set_host_xfer_buffer_ops(copy_kv_blocks)
             global hpu_buffer
@@ -4871,16 +4875,36 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
 
     def get_kv_caches_4D(self, kv_caches) -> dict[str, torch.Tensor]:
         kv_caches_4D: dict[str, torch.Tensor] = {}
+        print("=" * 60)
+        print(f"[INPUT] kv_caches type: {type(kv_caches)}")
         for layer_name, cache_or_cachelist in kv_caches.items():
             kv_cache_per_layer = []
             for cache in cache_or_cachelist:
                 if cache is None:
                     continue
+                print(f"[{layer_name}] Before reshape: {cache.shape}")
+                reshaped = cache.view(-1, self.block_size, *cache.shape[1:])
                 kv_cache_per_layer.append(cache.view(-1, self.block_size, *cache.shape[1:]))
+                print(f"[{layer_name}] After  reshape: {reshaped.shape}")
                 #NOTE(Chendi): Do not remove, call torch data_ptr to record physical address
                 cache.data_ptr()
-            kv_caches_4D[layer_name] = TensorTuple(tuple(kv_cache_per_layer)) \
+            print("len(kv_cache_per_layer) = ", len(kv_cache_per_layer))
+            result = TensorTuple(tuple(kv_cache_per_layer)) \
                 if len(kv_cache_per_layer) == 2 else kv_cache_per_layer[0]
+            print(f"[{layer_name}] Final result: {result.shape if isinstance(result, torch.Tensor) else [t.shape for t in result]}")
+            kv_caches_4D[layer_name] = result
+            # kv_caches_4D[layer_name] = TensorTuple(tuple(kv_cache_per_layer)) \
+            #     if len(kv_cache_per_layer) == 2 else kv_cache_per_layer[0]
+        print("=" * 60)
+        print(f"[OUTPUT] kv_caches_4D type: {type(kv_caches_4D)}")
+        for layer_name, val in kv_caches_4D.items():
+            if isinstance(val, torch.Tensor):
+                print(f"  [{layer_name}] type={type(val)}, shape={val.shape}, dtype={val.dtype}")
+            else:
+                print(f"  [{layer_name}] type={type(val)}")
+                for i, t in enumerate(val):
+                    print(f"    tensor[{i}]: shape={t.shape}, dtype={t.dtype}")
+        print("=" * 60)
         return kv_caches_4D
 
     def get_supported_generation_tasks(self) -> list[GenerationTask]:

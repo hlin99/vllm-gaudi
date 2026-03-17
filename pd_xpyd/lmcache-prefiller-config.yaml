@@ -8,7 +8,7 @@ remote_serde: "native"
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "sender"
-pd_retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
+retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
   #pd_store_location: "PDBackend"
 pd_proxy_host: 10.239.129.9
 pd_proxy_port: 7500

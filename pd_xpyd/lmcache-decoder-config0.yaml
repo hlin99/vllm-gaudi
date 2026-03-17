@@ -8,8 +8,8 @@ remote_serde: "native"
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "receiver"
-pd_retrieve_locations: ["PDBackend"]
-pd_store_location: "RemoteBackend"
+retrieve_locations: ["PDBackend"]
+store_location: "RemoteBackend"
 
 pd_peer_host: "192.168.100.221"
 pd_peer_init_port: 7300
