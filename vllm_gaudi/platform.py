@@ -213,11 +213,7 @@ class HpuPlatform(Platform):
 
     @classmethod
     def cuda_post_init(cls) -> None:
-        from vllm_gaudi.utils import is_fake_hpu
-        original_is_available = torch.cuda.is_available
-        torch.cuda.is_available = lambda: (
-            True if not is_fake_hpu() else original_is_available()
-        )
+        torch.cuda.is_available = lambda: False
 
     @classmethod
     def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str, model_config: ModelConfig) -> bool:

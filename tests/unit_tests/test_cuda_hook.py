@@ -2,7 +2,7 @@
 
 import enum
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import torch
 
@@ -39,33 +39,17 @@ for mod in [
 
 sys.modules.setdefault("vllm.platforms", _platforms_mock)
 
-import vllm_gaudi.utils  # noqa: E402
 from vllm_gaudi.platform import HpuPlatform  # noqa: E402
 
 
 class TestCudaPostInit:
 
-    def test_real_hpu_returns_true(self):
-        """On real HPU (not fake), torch.cuda.is_available() should
-        return True after cuda_post_init."""
+    def test_cuda_is_available_returns_false(self):
+        """After cuda_post_init, torch.cuda.is_available() should
+        always return False on HPU."""
         original = torch.cuda.is_available
         try:
-            with patch.object(vllm_gaudi.utils, "is_fake_hpu",
-                              return_value=False):
-                HpuPlatform.cuda_post_init()
-                assert torch.cuda.is_available() is True
-        finally:
-            torch.cuda.is_available = original
-
-    def test_fake_hpu_falls_back_to_original(self):
-        """On fake HPU, torch.cuda.is_available() should fall back to
-        the original torch implementation."""
-        original = torch.cuda.is_available
-        original_result = original()
-        try:
-            with patch.object(vllm_gaudi.utils, "is_fake_hpu",
-                              return_value=True):
-                HpuPlatform.cuda_post_init()
-                assert torch.cuda.is_available() == original_result
+            HpuPlatform.cuda_post_init()
+            assert torch.cuda.is_available() is False
         finally:
             torch.cuda.is_available = original
