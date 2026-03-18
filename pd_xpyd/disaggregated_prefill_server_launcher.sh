@@ -293,6 +293,7 @@ if [ "$RECIPE_CACHE" = true ]; then
   echo "Recipe cache enabled: PT_HPU_RECIPE_CACHE_CONFIG=${PT_HPU_RECIPE_CACHE_CONFIG}"
 fi
 
+unset QUANT_CONFIG VLLM_REQUANT_FP8_INC VLLM_ENABLE_RUNTIME_DEQUANT VLLM_MOE_N_SLICE VLLM_HPU_MARK_SCALES_AS_CONST RUNTIME_SCALE_PATCHING
 # Set quantization config based on --inc option
 if [ -n "$INC_CONFIG" ]; then
   export QUANT_CONFIG="$INC_CONFIG"
