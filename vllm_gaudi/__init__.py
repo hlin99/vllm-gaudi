@@ -1,9 +1,27 @@
+import json
+import sys
+
 from vllm_gaudi.platform import HpuPlatform
+
+
+def _uses_lmcache_connector() -> bool:
+    """Check if lmcache is configured as the KV connector via CLI args."""
+    for i, arg in enumerate(sys.argv):
+        if arg == "--kv-transfer-config" and i + 1 < len(sys.argv):
+            try:
+                config = json.loads(sys.argv[i + 1])
+                connector = config.get("kv_connector", "")
+                return "LMCache" in connector
+            except (json.JSONDecodeError, TypeError):
+                return False
+    return False
 
 
 def register():
     """Register the HPU platform."""
     HpuPlatform.set_torch_compile()
+    if _uses_lmcache_connector():
+        HpuPlatform.cuda_post_init()
     return "vllm_gaudi.platform.HpuPlatform"
 
 
