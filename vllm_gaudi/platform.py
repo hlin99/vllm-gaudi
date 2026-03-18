@@ -215,8 +215,8 @@ class HpuPlatform(Platform):
     def cuda_post_init(cls) -> None:
         print("before the monkey patch, torch.cuda.is_available()=", torch.cuda.is_available())
         torch.cuda.is_available = lambda: False
+        torch.hpu.get_device_properties = torch.cuda.get_device_properties
         print("after the monkey patch, torch.cuda.is_available()=", torch.cuda.is_available())
-
 
     @classmethod
     def is_kv_cache_dtype_supported(cls, kv_cache_dtype: str, model_config: ModelConfig) -> bool:
