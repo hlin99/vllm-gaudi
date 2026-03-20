@@ -299,13 +299,9 @@ class VLLMPagedMemHPUConnectorV2(VLLMPagedMemGPUConnectorV2):
 
     # TODO: need to optimize to enable real batching
     def batched_to_gpu(self, memory_objs, starts, ends, **kwargs):
-        for memory_obj, start, end in zip(
-            memory_objs, starts, ends, strict=False
-        ):
+        for memory_obj, start, end in zip(memory_objs, starts, ends):
             self.to_gpu(memory_obj, start, end, **kwargs)
 
     def batched_from_gpu(self, memory_objs, starts, ends, **kwargs):
-        for memory_obj, start, end in zip(
-            memory_objs, starts, ends, strict=False
-        ):
+        for memory_obj, start, end in zip(memory_objs, starts, ends):
             self.from_gpu(memory_obj, start, end, **kwargs)
