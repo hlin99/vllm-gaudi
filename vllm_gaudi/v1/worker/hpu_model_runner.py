@@ -3291,6 +3291,12 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             invalid_req_indices = []
         ######################### PREFILLS #########################
         if num_prefills > 0:
+            # Flush all pending lazy ops (including any KV cache transfers
+            # from the LMCache connector's to_gpu/from_gpu calls above)
+            # before starting prefill execution. On HPU this is analogous
+            # to CUDA's event.record() + synchronize() — it ensures the
+            # KV cache is fully populated before the attention layers
+            # read from it.
             htorch.core.mark_step()
             for idx, (req_id, prompt_len, token_ids, position_ids, attn_metadata, logits_indices,
                       logits_requests) in enumerate(zip(*shallow_tuple(prefill_data))):
