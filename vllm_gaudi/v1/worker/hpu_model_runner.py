@@ -1489,6 +1489,11 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                                                                               skip_copy=not batch_changed)
         return sampling_metadata
 
+    def _get_decode_batch_req_ids(self, num_decodes: int) -> list[str]:
+        # NOTE: decode execution and sampling must use the same request order
+        # as the decode batch tensors.
+        return cast(list[str], self.input_batch.req_ids[:num_decodes])
+
     def get_habana_paged_attn_buffers(self, block_tables, slot_mapping, batch_size):
         last_block_usage = [slot[0] % self.block_size + 1 for slot in slot_mapping]
         block_groups = [[i] * len(bt) for i, bt in enumerate(block_tables)]
@@ -3395,8 +3400,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         # Decodes run as one single batch with [padded_decode_bs, 1]
         if num_decodes > 0:
             assert decode_data is not None
+            decode_batch_req_ids = self._get_decode_batch_req_ids(num_decodes)
             lora_mask, lora_logits_mask = self._configure_lora(decode_data.token_ids, self.requests,
-                                                               pd_info.decode_req_ids, False)
+                                                               decode_batch_req_ids, False)
             self.event_start = self.profiler.get_timestamp_us()
             self.profiler.start("internal", "decode")
             htorch.core.mark_step()
@@ -3423,7 +3429,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     sampler_output, sampling_metadata = self._run_sampling(
                         batch_changed, logits_device
                         if spec_decode_metadata is None else logits_device[spec_decode_metadata.bonus_logits_indices],
-                        pd_info.decode_req_ids, logits_device.shape[0])
+                        decode_batch_req_ids, logits_device.shape[0])
 
                     if spec_decode_metadata is None:
                         decode_sampled_token_ids.append(sampler_output.sampled_token_ids.flatten())
