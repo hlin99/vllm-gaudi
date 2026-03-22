@@ -2,7 +2,12 @@ import ast
 from pathlib import Path
 
 
-MODEL_RUNNER_PATH = Path(__file__).resolve().parents[3] / "vllm_gaudi" / "v1" / "worker" / "hpu_model_runner.py"
+def _get_model_runner_path() -> Path:
+    for path in Path(__file__).resolve().parents:
+        candidate = path / "vllm_gaudi" / "v1" / "worker" / "hpu_model_runner.py"
+        if candidate.exists():
+            return candidate
+    raise AssertionError("Could not locate vllm_gaudi/v1/worker/hpu_model_runner.py")
 
 
 def _get_method(tree: ast.AST, class_name: str, method_name: str) -> ast.FunctionDef:
@@ -15,10 +20,10 @@ def _get_method(tree: ast.AST, class_name: str, method_name: str) -> ast.Functio
 
 
 def _parse_model_runner() -> ast.Module:
-    return ast.parse(MODEL_RUNNER_PATH.read_text())
+    return ast.parse(_get_model_runner_path().read_text())
 
 
-def test_prepare_prefill_inputs_keeps_prefill_path_for_kv_consumer():
+def test_prepare_prefill_inputs_does_not_early_return_none():
     tree = _parse_model_runner()
     method = _get_method(tree, "HPUModelRunner", "_prepare_prefill_inputs")
     returns_none_tuple = [
