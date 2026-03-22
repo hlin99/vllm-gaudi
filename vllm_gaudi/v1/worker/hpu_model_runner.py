@@ -1898,7 +1898,12 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         return outputs
 
     def _prepare_prefill_inputs(self, num_prefills, num_decodes,
-                                num_scheduled_tokens: list[int]) -> tuple[PrefillInputData, Optional[PrefillInputData]]:
+                                num_scheduled_tokens: list[int]) -> tuple[Optional[PrefillInputData], Optional[PrefillInputData]]:
+        # On KV consumer (decode) side, prefix-prefill reqs have been batched
+        # with decode reqs, so skip prefill processing entirely.
+        if has_kv_transfer_group() and self.vllm_config.kv_transfer_config.is_kv_consumer:
+            return None, None
+
         all_batch_contents, num_pad_across_dp = \
             self._extract_prefill_batch_contents(
                 num_prefills, num_decodes, num_scheduled_tokens)
@@ -2146,6 +2151,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                                spec_decode_metadata=spec_decode_metadata)
 
     def _prepare_decode_inputs(self,
+                               num_prefills,
                                num_decodes,
                                num_scheduled_tokens,
                                scheduler_output=None) -> tuple[DecodeInputData, Optional[DecodeInputData]]:
@@ -2156,14 +2162,20 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         # logic knows to ignore those indicies. Otherwise, the
         # padding data can be dummy since we have a causal mask.
 
-        num_pad_across_dp = self.get_dp_padding(num_decodes)
-        if num_decodes == 0:
+        # On KV consumer, prefix-prefill reqs (with num_scheduled_tokens=1)
+        # are batched along with decode reqs.
+        num_batched_reqs = num_decodes
+        if has_kv_transfer_group() and self.vllm_config.kv_transfer_config.is_kv_consumer:
+            num_batched_reqs += num_prefills
+
+        num_pad_across_dp = self.get_dp_padding(num_batched_reqs)
+        if num_batched_reqs == 0:
             if num_pad_across_dp > 0:
                 dummy_decode_input_data = self._create_dummy_decode_input_data()
                 return DecodeInputData(num_decodes=0), dummy_decode_input_data
             return DecodeInputData(num_decodes=0), None
-        return self._create_decode_input_data(num_decodes, num_scheduled_tokens,
-                                              self.input_batch.num_computed_tokens_cpu[:num_decodes],
+        return self._create_decode_input_data(num_batched_reqs, num_scheduled_tokens,
+                                              self.input_batch.num_computed_tokens_cpu[:num_batched_reqs],
                                               self.input_batch.block_table[0].get_cpu_tensor(), scheduler_output), None
 
     def _create_dummy_decode_input_data(self) -> DecodeInputData:
@@ -2486,7 +2498,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             num_scheduled_tokens.append(seq_num_scheduled_tokens)
             num_prompt_tokens.append(seq_num_prompt_tokens)
         return (self._prepare_prefill_inputs(num_prefills, num_decodes, num_scheduled_tokens),
-                self._prepare_decode_inputs(num_decodes, num_scheduled_tokens, scheduler_output))
+                self._prepare_decode_inputs(num_prefills, num_decodes, num_scheduled_tokens, scheduler_output))
 
     def _seq_len(self, attn_metadata):
         return attn_metadata.seq_len()
@@ -3246,6 +3258,16 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         num_decodes = len(pd_info.decode_req_ids)
         num_prefills = len(pd_info.prompt_req_ids)
         num_reqs = num_decodes + num_prefills
+
+        # On KV consumer, prefix-prefill reqs are batched with decode reqs.
+        # Adjust num_decodes/num_prefills BEFORE processing so that sampling
+        # and result assignment correctly cover all requests in the decode batch.
+        if has_kv_transfer_group() and self.vllm_config.kv_transfer_config.is_kv_consumer:
+            num_decodes += num_prefills
+            # Extend decode_req_ids with the prefix-prefill request IDs
+            pd_info.decode_req_ids.extend(pd_info.prompt_req_ids)
+            pd_info.prompt_req_ids = []
+            num_prefills = 0
         with self.profiler.record_event('internal', 'prepare_input_tensors'):
             prefill_input_data, decode_input_data = self._prepare_inputs(scheduler_output, num_prefills, num_decodes,
                                                                          warmup_mode)
@@ -3266,7 +3288,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         # skip kv_connector if dummy run
         if not warmup_mode:
             if LMCacheConnectorMetadata is not None and isinstance(scheduler_output.kv_connector_metadata,
-                                                                   LMCacheConnectorMetadata):
+                                                                   LMCacheConnectorMetadata) \
+                    and prefill_data is not None:
                 with set_forward_context(prefill_data.attn_metadata, self.vllm_config):
                     self.maybe_setup_kv_connector(scheduler_output)
             else:
@@ -3291,7 +3314,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if self.use_async_scheduling:
             invalid_req_indices = []
         ######################### PREFILLS #########################
-        if num_prefills > 0:
+        if num_prefills > 0 and prefill_data is not None:
             htorch.core.mark_step()
             for idx, (req_id, prompt_len, token_ids, position_ids, attn_metadata, logits_indices,
                       logits_requests) in enumerate(zip(*shallow_tuple(prefill_data))):
