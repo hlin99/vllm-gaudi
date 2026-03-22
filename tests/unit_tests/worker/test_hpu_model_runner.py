@@ -258,6 +258,11 @@ def test_update_states_request_resumed(model_runner, dist_init):
     assert _is_sampling_metadata_changed(model_runner, metadata_before)
     assert _is_req_added(model_runner, req_id)
     assert _is_req_scheduled(model_runner, req_id)
+
+
+def test_get_decode_batch_req_ids_uses_input_batch_order(model_runner):
+    model_runner.input_batch._req_ids = ["decode_0", "prefix_prefill_0", "decode_1", "prompt_0"]
+    assert model_runner._get_decode_batch_req_ids(3) == ["decode_0", "prefix_prefill_0", "decode_1"]
     assert _is_req_state_block_table_match(model_runner, req_id)
 
 
