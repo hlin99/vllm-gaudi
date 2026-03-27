@@ -3640,6 +3640,10 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if num_decodes > 0:
             assert decode_data is not None
 
+            # After num_decodes += num_prefills above, the decode batch
+            # includes both original decode and promoted prefix-prefill
+            # requests. Use input_batch.req_ids (not pd_info.decode_req_ids)
+            # to get the correct full set of request IDs.
             decode_batch_req_ids = self.input_batch.req_ids[:num_decodes]
             lora_mask, lora_logits_mask = self._configure_lora(decode_data.token_ids, self.requests,
                                                                decode_batch_req_ids, False)
