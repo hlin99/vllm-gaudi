@@ -3641,7 +3641,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             assert decode_data is not None
 
             lora_mask, lora_logits_mask = self._configure_lora(decode_data.token_ids, self.requests,
-                                                               pd_info.decode_req_ids, False)
+                                                               self.input_batch.req_ids[:num_decodes], False)
             self.event_start = self.profiler.get_timestamp_us()
             self.profiler.start("internal", "decode")
             htorch.core.mark_step()
@@ -3668,7 +3668,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     sampler_output, sampling_metadata = self._run_sampling(
                         batch_changed, logits_device
                         if spec_decode_metadata is None else logits_device[spec_decode_metadata.bonus_logits_indices],
-                        pd_info.decode_req_ids, logits_device.shape[0])
+                        self.input_batch.req_ids[:num_decodes], logits_device.shape[0])
 
                     if spec_decode_metadata is None:
                         decode_sampled_token_ids.append(sampler_output.sampled_token_ids.flatten())
