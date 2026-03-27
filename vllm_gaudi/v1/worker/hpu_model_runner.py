@@ -3640,8 +3640,13 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if num_decodes > 0:
             assert decode_data is not None
 
+            # After num_decodes += num_prefills above, the decode batch
+            # includes both original decode and promoted prefix-prefill
+            # requests. Use input_batch.req_ids (not pd_info.decode_req_ids)
+            # to get the correct full set of request IDs.
+            decode_batch_req_ids = self.input_batch.req_ids[:num_decodes]
             lora_mask, lora_logits_mask = self._configure_lora(decode_data.token_ids, self.requests,
-                                                               self.input_batch.req_ids[:num_decodes], False)
+                                                               decode_batch_req_ids, False)
             self.event_start = self.profiler.get_timestamp_us()
             self.profiler.start("internal", "decode")
             htorch.core.mark_step()
@@ -3668,7 +3673,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     sampler_output, sampling_metadata = self._run_sampling(
                         batch_changed, logits_device
                         if spec_decode_metadata is None else logits_device[spec_decode_metadata.bonus_logits_indices],
-                        self.input_batch.req_ids[:num_decodes], logits_device.shape[0])
+                        decode_batch_req_ids, logits_device.shape[0])
 
                     if spec_decode_metadata is None:
                         decode_sampled_token_ids.append(sampler_output.sampled_token_ids.flatten())
@@ -3735,7 +3740,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             if grammar_output:
                 self.apply_grammar_bitmask(scheduler_output, grammar_output, logits)
             sampler_output, _sampling_metadata = self._run_sampling(batch_changed, logits,
-                                                                    pd_info.prompt_req_ids + pd_info.decode_req_ids,
+                                                                    self.input_batch.req_ids[:num_decodes]
+                                                                    + pd_info.prompt_req_ids,
                                                                     logits.shape[0])
             # Deal with the case of incomplete prompt
             for i in range(logits.shape[0] - num_decodes):
