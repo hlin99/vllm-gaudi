@@ -286,17 +286,16 @@ def gather_list(input, indices, v):
 def _is_decode_request(b: InputBatch, i: int) -> bool:
     """Check if request at index i is a decode request.
 
-    A request is considered decode if:
-    - num_computed_tokens >= num_prompt_tokens (regular decode), OR
-    - req_type is "decode" (prefix-prefill on PD consumer side,
-      where KV was transferred but num_computed_tokens < num_prompt_tokens)
+    A request is considered decode if either:
+    1. num_computed_tokens >= num_prompt_tokens (regular decode), OR
+    2. req_type is "decode" (prefix-prefill on PD consumer side,
+       where KV was transferred but num_computed_tokens < num_prompt_tokens)
     """
     if b.num_computed_tokens_cpu[i] >= b.num_prompt_tokens[i]:
         return True
-    req_id = b.req_ids[i] if i < len(b.req_ids) else None
-    if req_id is not None and req_id in b.req_type and b.req_type[req_id] == "decode":
-        return True
-    return False
+    req_id = b._req_ids[i] if i < len(b._req_ids) else None
+    return (req_id is not None and req_id in b.req_type
+            and b.req_type[req_id] == "decode")
 
 
 def ensure_decodes_first(b: InputBatch):
