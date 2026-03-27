@@ -283,28 +283,13 @@ def gather_list(input, indices, v):
     return [input[i] if i is not None else v for i in indices]
 
 
-def _is_decode_request(b: InputBatch, i: int) -> bool:
-    """Check if request at index i is a decode request.
-
-    A request is considered decode if either:
-    1. num_computed_tokens >= num_prompt_tokens (regular decode), OR
-    2. req_type is "decode" (prefix-prefill on PD consumer side,
-       where KV was transferred but num_computed_tokens < num_prompt_tokens)
-    """
-    if b.num_computed_tokens_cpu[i] >= b.num_prompt_tokens[i]:
-        return True
-    req_id = b._req_ids[i] if i < len(b._req_ids) else None
-    return (req_id is not None and req_id in b.req_type
-            and b.req_type[req_id] == "decode")
-
-
 def ensure_decodes_first(b: InputBatch):
     num_reqs = b.num_reqs
     while True:
         # Find the first prompt index
         first_prompt_index = None
         for i in range(num_reqs):
-            if not _is_decode_request(b, i):
+            if b.num_computed_tokens_cpu[i] < b.num_prompt_tokens[i]:
                 first_prompt_index = i
                 break
         if first_prompt_index is None:
@@ -313,7 +298,7 @@ def ensure_decodes_first(b: InputBatch):
         # Find the last decode index
         last_decode_index = None
         for i in reversed(range(num_reqs)):
-            if _is_decode_request(b, i):
+            if b.num_computed_tokens_cpu[i] >= b.num_prompt_tokens[i]:
                 last_decode_index = i
                 break
         if last_decode_index is None:
@@ -3655,8 +3640,9 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
         if num_decodes > 0:
             assert decode_data is not None
 
+            decode_batch_req_ids = self.input_batch.req_ids[:num_decodes]
             lora_mask, lora_logits_mask = self._configure_lora(decode_data.token_ids, self.requests,
-                                                               self.input_batch.req_ids[:num_decodes], False)
+                                                               decode_batch_req_ids, False)
             self.event_start = self.profiler.get_timestamp_us()
             self.profiler.start("internal", "decode")
             htorch.core.mark_step()
@@ -3683,7 +3669,7 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
                     sampler_output, sampling_metadata = self._run_sampling(
                         batch_changed, logits_device
                         if spec_decode_metadata is None else logits_device[spec_decode_metadata.bonus_logits_indices],
-                        self.input_batch.req_ids[:num_decodes], logits_device.shape[0])
+                        decode_batch_req_ids, logits_device.shape[0])
 
                     if spec_decode_metadata is None:
                         decode_sampled_token_ids.append(sampler_output.sampled_token_ids.flatten())
