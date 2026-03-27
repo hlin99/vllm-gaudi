@@ -283,13 +283,29 @@ def gather_list(input, indices, v):
     return [input[i] if i is not None else v for i in indices]
 
 
+def _is_decode_request(b: InputBatch, i: int) -> bool:
+    """Check if request at index i is a decode request.
+
+    A request is considered decode if:
+    - num_computed_tokens >= num_prompt_tokens (regular decode), OR
+    - req_type is "decode" (prefix-prefill on PD consumer side,
+      where KV was transferred but num_computed_tokens < num_prompt_tokens)
+    """
+    if b.num_computed_tokens_cpu[i] >= b.num_prompt_tokens[i]:
+        return True
+    req_id = b.req_ids[i] if i < len(b.req_ids) else None
+    if req_id is not None and req_id in b.req_type and b.req_type[req_id] == "decode":
+        return True
+    return False
+
+
 def ensure_decodes_first(b: InputBatch):
     num_reqs = b.num_reqs
     while True:
         # Find the first prompt index
         first_prompt_index = None
         for i in range(num_reqs):
-            if b.num_computed_tokens_cpu[i] < b.num_prompt_tokens[i]:
+            if not _is_decode_request(b, i):
                 first_prompt_index = i
                 break
         if first_prompt_index is None:
@@ -298,7 +314,7 @@ def ensure_decodes_first(b: InputBatch):
         # Find the last decode index
         last_decode_index = None
         for i in reversed(range(num_reqs)):
-            if b.num_computed_tokens_cpu[i] >= b.num_prompt_tokens[i]:
+            if _is_decode_request(b, i):
                 last_decode_index = i
                 break
         if last_decode_index is None:
@@ -3735,7 +3751,8 @@ class HPUModelRunner(KVConnectorModelRunnerMixin):
             if grammar_output:
                 self.apply_grammar_bitmask(scheduler_output, grammar_output, logits)
             sampler_output, _sampling_metadata = self._run_sampling(batch_changed, logits,
-                                                                    pd_info.prompt_req_ids + pd_info.decode_req_ids,
+                                                                    self.input_batch.req_ids[:num_decodes]
+                                                                    + pd_info.prompt_req_ids,
                                                                     logits.shape[0])
             # Deal with the case of incomplete prompt
             for i in range(logits.shape[0] - num_decodes):
