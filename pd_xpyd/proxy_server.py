@@ -67,6 +67,8 @@ def log_info_red(msg):
 AIOHTTP_TIMEOUT = aiohttp.ClientTimeout(
     total=None, connect=None, sock_read=None, sock_connect=None
 )
+DEFAULT_DECODER_INIT_PORT = [7300]
+DEFAULT_DECODER_ALLOC_PORT = [7400]
 
 def csv_ints(s):
     return [int(x) for x in s.split(",")]
@@ -75,7 +77,90 @@ def csv_ints(s):
 def csv_strs(s):
     return [x.strip() for x in s.split(",")]
 
-counter = 0
+
+def calculate_message_token_length(
+    messages: list[dict[str, object]],
+    token_length_getter: Callable[[object], tuple[list[int], int]],
+) -> int:
+    total_length = 0
+    for message in messages:
+        if "content" not in message:
+            raise ValueError("Each chat message must include a 'content' field.")
+        total_length += token_length_getter(message["content"])[1]
+    return total_length
+
+
+def resolve_decode_receiver(
+    decode_instance: Optional[str],
+    decoder_init_port: Optional[list[int]] = None,
+    decoder_alloc_port: Optional[list[int]] = None,
+) -> tuple[str, list[int], list[int]]:
+    receiver_init_port = list(
+        decoder_init_port
+        if decoder_init_port is not None
+        else DEFAULT_DECODER_INIT_PORT
+    )
+    receiver_alloc_port = list(
+        decoder_alloc_port
+        if decoder_alloc_port is not None
+        else DEFAULT_DECODER_ALLOC_PORT
+    )
+    if not decode_instance:
+        return "127.0.0.1", receiver_init_port, receiver_alloc_port
+
+    try:
+        raw_ip, raw_port = decode_instance.rsplit(":", 1)
+    except ValueError as exc:
+        raise ValueError(
+            "Invalid decode instance specification. Expected format 'host:port'."
+        ) from exc
+
+    if raw_ip == "localhost":
+        return raw_ip, receiver_init_port, receiver_alloc_port
+
+    ip_parts = raw_ip.split(".")
+    if len(ip_parts) != 4:
+        logger.warning(
+            "Unable to derive decode receiver host for %s; using raw host.",
+            decode_instance,
+        )
+        return raw_ip, receiver_init_port, receiver_alloc_port
+
+    try:
+        # The decode service ports are provisioned in 8-instance groups, so the
+        # last two digits of the port encode the per-group receiver host offset.
+        last_two_digits = int(raw_port) % 100
+        offset = last_two_digits % 8
+        new_last_octet = int(ip_parts[3]) + offset
+    except ValueError:
+        logger.warning(
+            "Unable to derive decode receiver host for %s; using raw host.",
+            decode_instance,
+        )
+        return raw_ip, receiver_init_port, receiver_alloc_port
+
+    receiver_host = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
+    return receiver_host, receiver_init_port, receiver_alloc_port
+
+
+def build_disagg_spec(
+    req_id: str,
+    decode_instance: Optional[str],
+    decoder_init_port: Optional[list[int]] = None,
+    decoder_alloc_port: Optional[list[int]] = None,
+) -> dict[str, object]:
+    receiver_host, receiver_init_port, receiver_alloc_port = resolve_decode_receiver(
+        decode_instance,
+        decoder_init_port=decoder_init_port,
+        decoder_alloc_port=decoder_alloc_port,
+    )
+    return {
+        "req_id": req_id,
+        "receiver_host": receiver_host,
+        "receiver_init_port": receiver_init_port,
+        "receiver_alloc_port": receiver_alloc_port,
+    }
+
 
 async def D_first_token_generator(
     generator_d,
@@ -189,6 +274,8 @@ class Proxy:
         repeat_p_request: int = 1,
         repeat_d_times: int = 511,
         lmcache_nixl: bool = False,
+        decoder_init_port: Optional[list[int]] = None,
+        decoder_alloc_port: Optional[list[int]] = None,
     ):
         self.prefill_instances = prefill_instances
         self.decode_instances = decode_instances
@@ -208,6 +295,17 @@ class Proxy:
         self.repeat_d_times = repeat_d_times
 
         self.lmcache_nixl = lmcache_nixl
+        self.decoder_init_port = list(
+            decoder_init_port
+            if decoder_init_port is not None
+            else DEFAULT_DECODER_INIT_PORT
+        )
+        self.decoder_alloc_port = list(
+            decoder_alloc_port
+            if decoder_alloc_port is not None
+            else DEFAULT_DECODER_ALLOC_PORT
+        )
+        self.disagg_request_counter = 0
 
     def on_done(
         self,
@@ -638,6 +736,42 @@ class Proxy:
                 logger.error(f"Error releasing instances: {e}")
                 raise
 
+    def build_streaming_response(
+        self,
+        generator_d,
+        request: dict,
+        decode_instance: Optional[str],
+        total_length: int,
+    ) -> StreamingResponse:
+        generator_class = (
+            self.generator if request.get("stream", False) else D_first_token_generator
+        )
+        final_generator = generator_class(
+            generator_d,
+            self,
+            decode_instance,
+            req_len=total_length,
+        )
+        media_type = (
+            "text/event-stream"
+            if request.get("stream", False)
+            else "application/json"
+        )
+
+        async def wrapped_generator():
+            try:
+                async for chunk in final_generator:
+                    yield chunk
+            except CancelledError:
+                logger.warning(
+                    "[0] Client disconnected during create_completion (CancelledError)"
+                )
+            except Exception as e:
+                logger.error("[1] Exception in wrapped_generator: %s", str(e))
+                raise
+
+        return StreamingResponse(wrapped_generator(), media_type=media_type)
+
     async def send_request_to_service(
         self, instance: str, endpoint: str, req_data: dict, request_id: str,
         decode_instance: str = None
@@ -664,37 +798,18 @@ class Proxy:
             "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY')}",
             "X-Request-Id": request_id,
         }
-        xxx = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
-        yyy = decode_instance.split(':')[1] if decode_instance else "0"
 
-        raw_ip = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
-        raw_port = decode_instance.split(':')[1] if decode_instance else "9300"
-        
-        last_two_digits = int(raw_port) % 100
-        offset = last_two_digits % 8
-
-        ip_parts = raw_ip.split('.')
-        base_last_octet = int(ip_parts[3])
-        new_last_octet = base_last_octet + offset
-
-        xxx = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
-        yyy = raw_port
-        
-        print(f"Original Port: {yyy}, Offset: {offset}")
-        print(f"Calculated IP (xxx): {xxx}")
-        
-        global global_args, counter
-        disagg_spec = {
-            "req_id": str(counter),
-            "receiver_host": xxx,
-            "receiver_init_port": [7300],
-            "receiver_alloc_port": [7400],
-        }
+        disagg_spec = build_disagg_spec(
+            str(self.disagg_request_counter),
+            decode_instance,
+            decoder_init_port=self.decoder_init_port,
+            decoder_alloc_port=self.decoder_alloc_port,
+        )
         req_data["kv_transfer_params"] = {
             "ret_first_tok": False,
             "disagg_spec": disagg_spec,
         }
-        counter += 1
+        self.disagg_request_counter += 1
 
         prefiller_base_url = f"http://{instance}/"
         client = httpx.AsyncClient(timeout=None, base_url=prefiller_base_url)
@@ -837,36 +952,12 @@ class Proxy:
                 self.exception_handler(prefill_instance, decode_instance, total_length)
                 raise http_exc
 
-            if request.get("stream", False):
-                generator_class = self.generator
-            else:
-                # For stream=False request, cannot use P first token
-                generator_class = D_first_token_generator
-            final_generator = generator_class(
+            return self.build_streaming_response(
                 generator_d,
-                self,
+                request,
                 decode_instance,
-                req_len=total_length,
+                total_length,
             )
-            media_type = (
-                "text/event-stream"
-                if request.get("stream", False)
-                else "application/json"
-            )
-
-            async def wrapped_generator():
-                try:
-                    async for chunk in final_generator:
-                        yield chunk
-                except CancelledError:
-                    logger.warning(
-                        "[0] Client disconnected during create_completion (CancelledError)"
-                    )
-                except Exception as e:
-                    logger.error("[1] Exception in wrapped_generator: %s", str(e))
-                    raise
-
-            return StreamingResponse(wrapped_generator(), media_type=media_type)
         except Exception:
             exc_info = sys.exc_info()
             print("Error occurred in disagg proxy server")
@@ -885,9 +976,9 @@ class Proxy:
 
             start_time = time.time()
             # prefill stage
-            total_length = sum(
-                self.get_total_token_length(msg["content"])
-                for msg in kv_prepare_request["messages"]
+            total_length = calculate_message_token_length(
+                kv_prepare_request["messages"],
+                self.get_total_token_length,
             )
             end_time = time.time()
             log_info_green(
@@ -922,36 +1013,12 @@ class Proxy:
                 self.exception_handler(prefill_instance, decode_instance, total_length)
                 raise http_exc
 
-            if request.get("stream", False):
-                generator_class = self.generator
-            else:
-                # For stream=False request, cannot use P first token
-                generator_class = D_first_token_generator
-            final_generator = generator_class(
+            return self.build_streaming_response(
                 generator_d,
-                self,
+                request,
                 decode_instance,
-                req_len=total_length,
+                total_length,
             )
-            media_type = (
-                "text/event-stream"
-                if request.get("stream", False)
-                else "application/json"
-            )
-
-            async def wrapped_generator():
-                try:
-                    async for chunk in final_generator:
-                        yield chunk
-                except CancelledError:
-                    logger.warning(
-                        "[0] Client disconnected during create_completion (CancelledError)"
-                    )
-                except Exception as e:
-                    logger.error("[1] Exception in wrapped_generator: %s", str(e))
-                    raise
-
-            return StreamingResponse(wrapped_generator(), media_type=media_type)
         except Exception:
             exc_info = sys.exc_info()
             error_messages = [str(e) for e in exc_info if e]
@@ -1213,7 +1280,9 @@ class ProxyServer:
             benchmark_mode=args.benchmark_mode,
             repeat_p_request=args.repeat_p_request,
             repeat_d_times=args.repeat_d_times,
-            lmcache_nixl=args.lmcache_nixl
+            lmcache_nixl=args.lmcache_nixl,
+            decoder_init_port=args.decoder_init_port,
+            decoder_alloc_port=args.decoder_alloc_port,
         )
 
     def validate_parsed_serve_args(self, prefills: list, decodes: list):
