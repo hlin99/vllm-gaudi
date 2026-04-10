@@ -644,7 +644,7 @@ class Proxy:
 
     async def send_request_to_service(
         self, instance: str, endpoint: str, req_data: dict, request_id: str,
-        decode_instance: str = None
+        decode_instance: str = None, pd_req_id: str = None
     ):  # yapf: disable
         """
         Send a request to a service using a client from the pool.
@@ -687,9 +687,9 @@ class Proxy:
         print(f"Original Port: {yyy}, Offset: {offset}")
         print(f"Calculated IP (xxx): {xxx}")
         
-        global global_args, counter
+        global global_args
         disagg_spec = {
-            "req_id": str(counter),
+            "req_id": pd_req_id,
             "receiver_host": xxx,
             "receiver_init_port": [7300],
             "receiver_alloc_port": [7400],
@@ -698,7 +698,6 @@ class Proxy:
             "ret_first_tok": False,
             "disagg_spec": disagg_spec,
         }
-        counter += 1
 
         prefiller_base_url = f"http://{instance}/"
         client = httpx.AsyncClient(timeout=None, base_url=prefiller_base_url)
@@ -818,11 +817,13 @@ class Proxy:
             # Send request to prefill service
             # Register event to wait for KV transfer completion
             global counter
-            pd_req_id = str(counter)  # counter increments inside send_request_to_service
+            pd_req_id = str(counter)
+            counter += 1  # Increment immediately, before any await
             transfer_event = asyncio.Event()
             pending_transfers[pd_req_id] = transfer_event
             response = await self.send_request_to_service(
-                prefill_instance, "/v1/completions", kv_prepare_request, request_id, decode_instance
+                prefill_instance, "/v1/completions", kv_prepare_request, request_id, decode_instance,
+                pd_req_id=pd_req_id,
             )  # yapf: disable
 
             # Perform kv recv and decoding stage
@@ -917,11 +918,13 @@ class Proxy:
             # Send request to prefill service
             # Register event to wait for KV transfer completion
             global counter
-            pd_req_id = str(counter)  # counter increments inside send_request_to_service
+            pd_req_id = str(counter)
+            counter += 1  # Increment immediately, before any await
             transfer_event = asyncio.Event()
             pending_transfers[pd_req_id] = transfer_event
             response = await self.send_request_to_service(
-                prefill_instance, "/v1/chat/completions", kv_prepare_request, request_id
+                prefill_instance, "/v1/chat/completions", kv_prepare_request, request_id,
+                pd_req_id=pd_req_id,
             )  # yapf: disable
 
             # Perform kv recv and decoding stage
