@@ -76,6 +76,7 @@ def csv_strs(s):
     return [x.strip() for x in s.split(",")]
 
 counter = 0
+pending_transfers: dict[str, asyncio.Event] = {}
 
 async def D_first_token_generator(
     generator_d,
@@ -148,6 +149,9 @@ async def zmq_pull_server():
 
         req_id = msg.req_id
         app.state.finished_reqs[req_id] += 1
+        evt = pending_transfers.get(req_id)
+        if evt is not None:
+            evt.set()
         logger.error("Prefill of req %s done.", req_id)
     socket.close(linger=0)
 
@@ -812,6 +816,11 @@ class Proxy:
             )
 
             # Send request to prefill service
+            # Register event to wait for KV transfer completion
+            global counter
+            pd_req_id = str(counter)  # counter increments inside send_request_to_service
+            transfer_event = asyncio.Event()
+            pending_transfers[pd_req_id] = transfer_event
             response = await self.send_request_to_service(
                 prefill_instance, "/v1/completions", kv_prepare_request, request_id, decode_instance
             )  # yapf: disable
@@ -821,6 +830,11 @@ class Proxy:
             kv_transfer_params = response_json.get("kv_transfer_params", {})
             if kv_transfer_params:
                 request["kv_transfer_params"] = kv_transfer_params
+
+            # Wait for KV transfer to complete (ZMQ ProxyNotif from prefiller)
+            await transfer_event.wait()
+            pending_transfers.pop(pd_req_id, None)
+            log_info_green(f"KV transfer confirmed for pd_req_id={pd_req_id}")
 
             # request["logprobs"] = 1
             # request["top_logprobs"] = 1
@@ -901,6 +915,11 @@ class Proxy:
             )
 
             # Send request to prefill service
+            # Register event to wait for KV transfer completion
+            global counter
+            pd_req_id = str(counter)  # counter increments inside send_request_to_service
+            transfer_event = asyncio.Event()
+            pending_transfers[pd_req_id] = transfer_event
             response = await self.send_request_to_service(
                 prefill_instance, "/v1/chat/completions", kv_prepare_request, request_id
             )  # yapf: disable
@@ -913,6 +932,11 @@ class Proxy:
             decode_instance = self.schedule(
                 self.decode_cycler, is_prompt=False, request_len=total_length
             )
+
+            # Wait for KV transfer to complete (ZMQ ProxyNotif from prefiller)
+            await transfer_event.wait()
+            pending_transfers.pop(pd_req_id, None)
+            log_info_green(f"KV transfer confirmed for pd_req_id={pd_req_id}")
 
             try:
                 generator_d = self.forward_request(
