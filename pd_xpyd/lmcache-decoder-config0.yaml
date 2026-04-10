@@ -1,15 +1,15 @@
-local_cpu: True
+local_cpu: False
 max_local_cpu_size: 5
 
   #remote_url: "redis://10.239.129.9:6379"
-remote_url: "lm://192.168.100.198:8888"
-remote_serde: "native"
+  #remote_url: "lm://192.168.100.198:8888"
+  #remote_serde: "native"
 
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "receiver"
-retrieve_locations: ["PDBackend"]
-store_location: "RemoteBackend"
+  #retrieve_locations: ["PDBackend"]
+  #store_location: "RemoteBackend"
 
 pd_peer_host: "192.168.100.221"
 pd_peer_init_port: 7300
@@ -19,6 +19,6 @@ pd_buffer_size: 4317511680 # 1GB
 pd_buffer_device: "cpu"
 nixl_backends: [UCX]
 
-save_decode_cache: true
-save_unfull_chunk: true
+  #save_decode_cache: true
+  #save_unfull_chunk: true
 

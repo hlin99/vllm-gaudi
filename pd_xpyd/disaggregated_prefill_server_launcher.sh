@@ -263,7 +263,7 @@ unset VLLM_SKIP_WARMUP
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-export PT_HPU_LAZY_MODE=1
+export PT_HPU_LAZY_MODE=0
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
@@ -412,7 +412,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config.yaml"
   fi
 else
-  KV_ROLE="kv_both"
+  KV_ROLE="kv_consumer"
   BASE_PORT=$((BASE_PORT+1000))
   BASE_CHANNEL_PORT=$((BASE_CHANNEL_PORT+1000))
   DP_MASTER_PORT=$((DP_MASTER_PORT+1000))

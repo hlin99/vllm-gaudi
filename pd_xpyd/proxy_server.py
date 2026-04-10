@@ -148,7 +148,7 @@ async def zmq_pull_server():
             continue
 
         req_id = msg.req_id
-        app.state.finished_reqs[req_id] += 1
+        # app.state.finished_reqs[req_id] += 1
         evt = pending_transfers.get(req_id)
         if evt is not None:
             evt.set()

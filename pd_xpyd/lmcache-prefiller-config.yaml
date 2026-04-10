@@ -1,14 +1,14 @@
-local_cpu: True
+local_cpu: False
 max_local_cpu_size: 5
 
   #remote_url: "redis://10.239.129.9:6379"
-remote_url: "lm://192.168.100.198:8888"
-remote_serde: "native"
+  #remote_url: "lm://192.168.100.198:8888"
+  #remote_serde: "native"
 
 enable_pd: True
 transfer_channel: "nixl"
 pd_role: "sender"
-retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
+  #retrieve_locations: ["LocalCPUBackend", "RemoteBackend"]
   #pd_store_location: "PDBackend"
 pd_proxy_host: 10.239.129.9
 pd_proxy_port: 7500
