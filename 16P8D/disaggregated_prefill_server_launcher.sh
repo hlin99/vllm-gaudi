@@ -467,7 +467,7 @@ else
   fi
 fi
 
-# heck if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
+# Check if DP_SIZE is 1 or equal to NUM_LOCAL_INSTANCES
 if (( DP_SIZE != 1 && DP_SIZE != NUM_LOCAL_INSTANCES * NODE_SIZE )); then
   echo "Error: DP_SIZE ($DP_SIZE) must be 1 or equal to NUM_LOCAL_INSTANCES ($NUM_LOCAL_INSTANCES) * NODE_SIZE ($NODE_SIZE)"
   exit 1
