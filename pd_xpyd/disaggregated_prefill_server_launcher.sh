@@ -325,6 +325,8 @@ if [ ! -d "$LOG_DIR_FULL" ]; then
   fi
 fi
 
+export VLLM_NIXL_SIDE_CHANNEL_HOST=${NODE_IP}
+
 if [[ "$KV_CONNECTOR" = *lmcache* ]]; then
     echo "kv connector is lmcache"
     export PYTHONHASHSEED=0
@@ -333,7 +335,6 @@ if [[ "$KV_CONNECTOR" = *lmcache* ]]; then
     export LMCACHE_REMOTE_SERDE=naive
     export LMCACHE_CHUNK_SIZE=256
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-config-lm.yaml"
-    export PT_HPU_LAZY_MODE=1
 else
     echo "kv connector is nixl"
     # NIXL Config
