@@ -14,7 +14,7 @@ bash "$BASH_DIR"/../gen_decoder_configs.sh 231 0 8 "$BASH_DIR/.."
 bash "$BASH_DIR"/../disaggregated_prefill_server_launcher.sh \
   -r decode \
   -m /mnt/disk2/hf_models/DeepSeek-V2-Lite-Chat/ \
-  -n 1 -t 1 \
+  -n 8 -t 1 \
   --node-ip 192.168.100.231 \
   --max-model-len 4096 \
   --max-num-batched-tokens 4096 \

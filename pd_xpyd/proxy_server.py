@@ -671,21 +671,26 @@ class Proxy:
         xxx = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
         yyy = decode_instance.split(':')[1] if decode_instance else "0"
 
+        #raw_ip = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
+        #raw_port = decode_instance.split(':')[1] if decode_instance else "9300"
+        
+        #last_two_digits = int(raw_port) % 100
+        #offset = last_two_digits % 8
+
+        #ip_parts = raw_ip.split('.')
+        #base_last_octet = int(ip_parts[3])
+        #new_last_octet = base_last_octet + offset
+
+        #xxx = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
+        #yyy = raw_port
         raw_ip = decode_instance.split(':')[0] if decode_instance else "127.0.0.1"
         raw_port = decode_instance.split(':')[1] if decode_instance else "9300"
-        
-        last_two_digits = int(raw_port) % 100
-        offset = last_two_digits % 8
 
-        ip_parts = raw_ip.split('.')
-        base_last_octet = int(ip_parts[3])
-        new_last_octet = base_last_octet + offset
-
-        xxx = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}.{new_last_octet}"
+        xxx = raw_ip
         yyy = raw_port
-        
-        print(f"Original Port: {yyy}, Offset: {offset}")
-        print(f"Calculated IP (xxx): {xxx}")
+
+        print(f"Decode instance: {decode_instance}, receiver_host: {xxx}, receiver_port: {yyy}")
+
         
         global global_args
         disagg_spec = {
