@@ -8,7 +8,7 @@ export LD_LIBRARY_PATH=${LIBFABRIC_ROOT}/lib:${LD_LIBRARY_PATH}
 
 export UCX_MEMTYPE_CACHE=0
 
-# Generate decoder configs: global_id 0-7, IP 192.168.100.{221..228}
+# Generate decoder configs: global_id 0-7, IP 192.168.100.{231..238}
 bash "$BASH_DIR"/../gen_decoder_configs.sh 231 0 8 "$BASH_DIR/.."
 
 bash "$BASH_DIR"/../disaggregated_prefill_server_launcher.sh \

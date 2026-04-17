@@ -14,4 +14,6 @@ source "$BASH_DIR"/../disaggregated_prefill_server_launcher.sh \
   --max-num-seqs 128 \
   --gpu-memory-utilization 0.8 \
   --kv-connector lmcache \
-  --no-ep
+  --no-ep \
+  --nixl-buffer-device hpu
+
