@@ -410,7 +410,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-prefiller-config.yaml"
   else
-    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config${GLOBAL_ID}.yaml"
+    export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-prefiller-config${GLOBAL_ID}.yaml}"
   fi
 else
   KV_ROLE="kv_consumer"
@@ -562,7 +562,7 @@ launch_vllm_server() {
           "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
         )
       else
-	export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config${GLOBAL_ID}.yaml"
+	export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-decoder-config${GLOBAL_ID}.yaml}"
 	KV_CONNECTOR_ARGS+=(
           --kv-transfer-config
           "{\"kv_connector\":\"LMCacheConnectorV1\",\"kv_role\":\"${KV_ROLE}\",\"kv_connector_extra_config\":{\"lmcache_rpc_port\":\"${RPC_PORTx}\",\"skip_last_n_tokens\":0}}"
