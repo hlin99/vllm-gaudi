@@ -1,11 +1,12 @@
 local_cpu: False
 
 enable_pd: True
+pd_backend_mode: "async"
 transfer_channel: "nixl"
 pd_role: "receiver"
 pd_peer_host: "__PD_PEER_HOST__"
-pd_peer_init_port: 7300
-pd_peer_alloc_port: 7400
+pd_peer_init_port: __PD_PEER_INIT_PORT__
+pd_peer_alloc_port: __PD_PEER_ALLOC_PORT__
 pd_buffer_size: 4317511680
 pd_buffer_device: "cpu"
 nixl_backends: [UCX]

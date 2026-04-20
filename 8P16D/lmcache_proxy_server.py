@@ -22,10 +22,16 @@ import zmq.asyncio
 
 # First Party
 from lmcache.logging import init_logger
-from lmcache.v1.storage_backend.pd_backend import (
-    PDMsg,
-    ProxyNotif,
-)
+try:
+    from lmcache.v1.storage_backend.pd_backend_async import (
+        PDMsg,
+        ProxyNotif,
+    )
+except ImportError:
+    from lmcache.v1.storage_backend.pd_backend import (
+        PDMsg,
+        ProxyNotif,
+    )
 
 logger = init_logger(__name__)
 
@@ -96,23 +102,14 @@ async def lifespan(app: FastAPI):
     decoder_pairs = pair_hosts_and_ports(dec_hosts, dec_ports, global_args.num_decoders)
     print("decoder_pairs=", decoder_pairs)
 
-    # Whether the ports increase per instances
-    # (only when using single host/port with num_decoders > 1)
-    incremental_mode = (
-        len(dec_hosts) == 1 and len(dec_ports) == 1 and global_args.num_decoders > 1
-    )
-
     for i, (host, port) in enumerate(decoder_pairs):
         decoder_base_url = f"http://{host}:{int(port)}"
         decode_client = httpx.AsyncClient(timeout=None, base_url=decoder_base_url)
-        if incremental_mode:
-            init_ports = [p + i for p in global_args.decoder_init_port]
-            alloc_ports = [p + i for p in global_args.decoder_alloc_port]
-        else:
-            # Use the provided ports as-is
-            # (suitable when different hosts can reuse same port numbers)
-            init_ports = list(global_args.decoder_init_port)
-            alloc_ports = list(global_args.decoder_alloc_port)
+
+        all_init = global_args.decoder_init_port
+        all_alloc = global_args.decoder_alloc_port
+        init_ports = [all_init[i]] if i < len(all_init) else [all_init[0]]
+        alloc_ports = [all_alloc[i]] if i < len(all_alloc) else [all_alloc[0]]
 
         app.state.decode_clients.append(
             ClientInfo(

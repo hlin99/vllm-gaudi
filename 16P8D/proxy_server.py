@@ -29,10 +29,16 @@ import msgspec
 import zmq
 import zmq.asyncio
 from contextlib import asynccontextmanager
-from lmcache.v1.storage_backend.pd_backend import (
-    PDMsg,
-    ProxyNotif,
-)
+try:
+    from lmcache.v1.storage_backend.pd_backend_async import (
+        PDMsg,
+        ProxyNotif,
+    )
+except ImportError:
+    from lmcache.v1.storage_backend.pd_backend import (
+        PDMsg,
+        ProxyNotif,
+    )
 
 formatter = logging.Formatter(
     "[%(asctime)s] %(levelname)s - %(message)s", "%Y-%m-%d %H:%M:%S"
@@ -691,13 +697,22 @@ class Proxy:
 
         print(f"Decode instance: {decode_instance}, receiver_host: {xxx}, receiver_port: {yyy}")
 
-        
         global global_args
+        try:
+            decode_idx = self.decode_instances.index(decode_instance)
+        except (ValueError, AttributeError):
+            decode_idx = 0
+
+        init_ports = global_args.decoder_init_port
+        alloc_ports = global_args.decoder_alloc_port
+        init_port = init_ports[decode_idx] if decode_idx < len(init_ports) else init_ports[0]
+        alloc_port = alloc_ports[decode_idx] if decode_idx < len(alloc_ports) else alloc_ports[0]
+
         disagg_spec = {
             "req_id": pd_req_id,
             "receiver_host": xxx,
-            "receiver_init_port": [7300],
-            "receiver_alloc_port": [7400],
+            "receiver_init_port": [init_port],
+            "receiver_alloc_port": [alloc_port],
         }
         req_data["kv_transfer_params"] = {
             "ret_first_tok": False,
@@ -920,6 +935,11 @@ class Proxy:
                 self.prefill_cycler, is_prompt=True, request_len=total_length
             )
 
+            # Select decode instance BEFORE sending prefill so disagg_spec uses the correct ports
+            decode_instance = self.schedule(
+                self.decode_cycler, is_prompt=False, request_len=total_length
+            )
+
             # Send request to prefill service
             # Register event to wait for KV transfer completion
             global counter
@@ -929,6 +949,7 @@ class Proxy:
             pending_transfers[pd_req_id] = transfer_event
             response = await self.send_request_to_service(
                 prefill_instance, "/v1/chat/completions", kv_prepare_request, request_id,
+                decode_instance=decode_instance,
                 pd_req_id=pd_req_id,
             )  # yapf: disable
 
@@ -937,9 +958,6 @@ class Proxy:
             kv_transfer_params = response_json.get("kv_transfer_params", {})
             if kv_transfer_params:
                 request["kv_transfer_params"] = kv_transfer_params
-            decode_instance = self.schedule(
-                self.decode_cycler, is_prompt=False, request_len=total_length
-            )
 
             # Wait for KV transfer to complete (ZMQ ProxyNotif from prefiller)
             await transfer_event.wait()

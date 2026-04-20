@@ -2,6 +2,7 @@ local_cpu: False
 max_local_cpu_size: 5
 
 enable_pd: True
+pd_backend_mode: "async"
 transfer_channel: "nixl"
 pd_role: "sender"
 pd_proxy_host: __PD_PROXY_HOST__
