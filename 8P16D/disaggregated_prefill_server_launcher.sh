@@ -263,7 +263,7 @@ unset VLLM_SKIP_WARMUP
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-export PT_HPU_LAZY_MODE=0
+export PT_HPU_LAZY_MODE=1
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
@@ -334,7 +334,7 @@ if [[ "$KV_CONNECTOR" = *lmcache* ]]; then
     export PT_HPU_GPU_MIGRATION=1
     export LMCACHE_REMOTE_SERDE=naive
     export LMCACHE_CHUNK_SIZE=256
-    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-config-lm.yaml"
+    export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-config-lm.yaml}"
 else
     echo "kv connector is nixl"
     # NIXL Config
@@ -408,7 +408,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
 
   RPC_PORT="producer"
   if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
-    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-prefiller-config.yaml"
+    export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-decoder-config.yaml}"
   else
     export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-prefiller-config${GLOBAL_ID}.yaml}"
   fi
@@ -463,7 +463,7 @@ else
   if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
     export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-mooncake-decoder-config.yaml"
   else
-    export LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-decoder-config.yaml"
+    export LMCACHE_CONFIG_FILE="${LMCACHE_CONFIG_FILE:-${BASH_DIR}/lmcache-decoder-config.yaml}"
   fi
 fi
 

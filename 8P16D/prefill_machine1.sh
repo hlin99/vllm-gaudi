@@ -21,7 +21,7 @@ for i in $(seq 0 7); do
     HABANA_VISIBLE_DEVICES=$i \
     LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config${GLOBAL_ID}.yaml" \
     bash "$BASH_DIR/disaggregated_prefill_server_launcher.sh" \
-      -m /mnt/disk2/hf_models/Meta-Llama-3-8B-Instruct/ \
+      -m /mnt/disk2/hf_models/DeepSeek-V2-Lite-Chat/ \
       -n 1 -t 1 \
       --node-ip "$PREFILL_IP" \
       --base-port "$((BASE_HTTP_PORT + i))" \
@@ -31,6 +31,7 @@ for i in $(seq 0 7); do
       --max-num-batched-tokens 4096 \
       --max-num-seqs 128 \
       --gpu-memory-utilization 0.8 \
+      --no-ep \
       --kv-connector lmcache &
 
     sleep 2
