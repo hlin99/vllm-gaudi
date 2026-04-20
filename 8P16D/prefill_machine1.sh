@@ -32,6 +32,7 @@ for i in $(seq 0 7); do
       --max-num-seqs 128 \
       --gpu-memory-utilization 0.8 \
       --no-ep \
+      --nixl-buffer-device hpu \
       --kv-connector lmcache &
 
     sleep 2

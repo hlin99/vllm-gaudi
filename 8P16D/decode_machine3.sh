@@ -5,14 +5,14 @@ unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
 
 export UCX_MEMTYPE_CACHE=0
 
-# Generate decoder configs: global_id 8-15, IP 192.168.100.{221..228}, ports 7308-7315/7408-7415
-bash "$BASH_DIR/gen_decoder_configs.sh" 221 1 8 "$BASH_DIR" 7308 7408
+# Generate decoder configs: global_id 8-15, IP 192.168.100.{231..238}, ports 7308-7315/7408-7415
+bash "$BASH_DIR/gen_decoder_configs.sh" 231 1 8 "$BASH_DIR" 7300 7400
 
 BASE_HTTP_PORT=8300
 
 for i in $(seq 0 7); do
     GLOBAL_ID=$((8 + i))
-    RDMA_IP="192.168.100.$((221 + i))"
+    RDMA_IP="192.168.100.$((231 + i))"
 
     echo "====== Starting decoder instance $i (RDMA: ${RDMA_IP}, HTTP: $((BASE_HTTP_PORT + i))) ======"
 
@@ -31,6 +31,7 @@ for i in $(seq 0 7); do
       --max-num-seqs 128 \
       --gpu-memory-utilization 0.8 \
       --no-ep \
+      --nixl-buffer-device hpu \
       --kv-connector lmcache &
 
     sleep 2

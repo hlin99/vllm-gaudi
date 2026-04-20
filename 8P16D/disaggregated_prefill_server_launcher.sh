@@ -263,7 +263,7 @@ unset VLLM_SKIP_WARMUP
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-export PT_HPU_LAZY_MODE=1
+export PT_HPU_LAZY_MODE=0
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
