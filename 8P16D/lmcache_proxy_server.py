@@ -108,6 +108,18 @@ async def lifespan(app: FastAPI):
 
         all_init = global_args.decoder_init_port
         all_alloc = global_args.decoder_alloc_port
+        if i >= len(all_init):
+            logger.warning(
+                "Decoder index %d exceeds decoder_init_port list length=%d; "
+                "falling back to first port. Ensure --decoder-init-port has "
+                "one entry per decoder.", i, len(all_init)
+            )
+        if i >= len(all_alloc):
+            logger.warning(
+                "Decoder index %d exceeds decoder_alloc_port list length=%d; "
+                "falling back to first port. Ensure --decoder-alloc-port has "
+                "one entry per decoder.", i, len(all_alloc)
+            )
         init_ports = [all_init[i]] if i < len(all_init) else [all_init[0]]
         alloc_ports = [all_alloc[i]] if i < len(all_alloc) else [all_alloc[0]]
 

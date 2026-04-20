@@ -701,10 +701,26 @@ class Proxy:
         try:
             decode_idx = self.decode_instances.index(decode_instance)
         except (ValueError, AttributeError):
+            logger.warning(
+                "decode_instance %r not found in decode_instances list; "
+                "falling back to index 0 for port lookup", decode_instance
+            )
             decode_idx = 0
 
         init_ports = global_args.decoder_init_port
         alloc_ports = global_args.decoder_alloc_port
+        if decode_idx >= len(init_ports):
+            logger.warning(
+                "decode_idx=%d exceeds decoder_init_port list length=%d; "
+                "falling back to first port. Ensure --decoder-init-port has "
+                "one entry per decoder.", decode_idx, len(init_ports)
+            )
+        if decode_idx >= len(alloc_ports):
+            logger.warning(
+                "decode_idx=%d exceeds decoder_alloc_port list length=%d; "
+                "falling back to first port. Ensure --decoder-alloc-port has "
+                "one entry per decoder.", decode_idx, len(alloc_ports)
+            )
         init_port = init_ports[decode_idx] if decode_idx < len(init_ports) else init_ports[0]
         alloc_port = alloc_ports[decode_idx] if decode_idx < len(alloc_ports) else alloc_ports[0]
 
