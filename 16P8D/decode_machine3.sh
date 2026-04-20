@@ -13,7 +13,7 @@ export UCX_MEMTYPE_CACHE=0
 # Generate decoder configs: global_id 0-7, IP 192.168.100.{231..238}, ports 7300-7307/7400-7407
 bash "$BASH_DIR/gen_decoder_configs.sh" 231 0 8 "$BASH_DIR" 7300 7400
 
-BASE_HTTP_PORT=9300
+BASE_HTTP_PORT=8300
 
 for i in $(seq 0 7); do
     GLOBAL_ID=$i
