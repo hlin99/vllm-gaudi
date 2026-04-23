@@ -263,7 +263,7 @@ unset VLLM_SKIP_WARMUP
 if [ "$WARMUP" = false ]; then
   export VLLM_SKIP_WARMUP=True
 fi
-export PT_HPU_LAZY_MODE=0
+export PT_HPU_LAZY_MODE=1
 export PT_HPU_ENABLE_LAZY_COLLECTIVES=1
 
 # Set flags based on --apc option
@@ -403,6 +403,7 @@ if [ "$SERVER_ROLE" == "prefill" ]; then
   fi
   export VLLM_PROMPT_CTX_BUCKET_MIN=0
   export VLLM_PROMPT_CTX_BUCKET_MAX=$((input_max / 128 + 32))
+  export VLLM_PROMPT_CTX_BUCKET_MAX=0
   export VLLM_PROMPT_CTX_BUCKET_STEP=32
   export VLLM_EXPONENTIAL_BUCKETING=false
 
@@ -432,15 +433,15 @@ else
 
   export PT_HPU_MOE_CHUNK="64, 128"
   export PT_HPU_MOE_TOKEN_BOUNDARY="2048, 4096"
-  export VLLM_EXPONENTIAL_BUCKETING=true
+  export VLLM_EXPONENTIAL_BUCKETING=false
   # Bucket settings
-  #export VLLM_PROMPT_QUERY_BUCKET_MIN=1
-  #export VLLM_PROMPT_QUERY_BUCKET_STEP=1
-  #export VLLM_PROMPT_QUERY_BUCKET_MAX=1
+  export VLLM_PROMPT_QUERY_BUCKET_MIN=1
+  export VLLM_PROMPT_QUERY_BUCKET_STEP=1
+  export VLLM_PROMPT_QUERY_BUCKET_MAX=1
 
-  #export VLLM_PROMPT_BS_BUCKET_MIN=1
-  #export VLLM_PROMPT_BS_BUCKET_STEP=1
-  #export VLLM_PROMPT_BS_BUCKET_MAX=1
+  export VLLM_PROMPT_BS_BUCKET_MIN=1
+  export VLLM_PROMPT_BS_BUCKET_STEP=1
+  export VLLM_PROMPT_BS_BUCKET_MAX=1
 
   unset VLLM_PROMPT_CTX_BUCKET_MIN
   unset VLLM_PROMPT_CTX_BUCKET_MAX
@@ -449,15 +450,17 @@ else
 
   export VLLM_PROMPT_CTX_BUCKET_MIN=$ctx_min
   export VLLM_PROMPT_CTX_BUCKET_MAX=$ctx_max
-  export VLLM_PROMPT_CTX_BUCKET_STEP=8
+  export VLLM_PROMPT_CTX_BUCKET_STEP=64
+  #export VLLM_PROMPT_CTX_BUCKET_MIN=0
+  #export VLLM_PROMPT_CTX_BUCKET_MAX=0
   env|grep VLLM_PROMPT_CTX_BUCKET
 
   export VLLM_DECODE_BS_BUCKET_MIN=1
-  export VLLM_DECODE_BS_BUCKET_STEP=4
-  export VLLM_DECODE_BS_BUCKET_MAX=32
+  export VLLM_DECODE_BS_BUCKET_STEP=32
+  export VLLM_DECODE_BS_BUCKET_MAX=64
 
   export VLLM_DECODE_BLOCK_BUCKET_MIN=$decode_block_min
-  export VLLM_DECODE_BLOCK_BUCKET_STEP=32
+  export VLLM_DECODE_BLOCK_BUCKET_STEP=256
   export VLLM_DECODE_BLOCK_BUCKET_MAX=$decode_block_max
   RPC_PORT="consumer"
   if [ "$KV_CONNECTOR" = "lmcache-mooncake" ]; then
@@ -591,7 +594,7 @@ launch_vllm_server() {
     BASE_CMD=(
 	vllm serve "$model_name"
 	  --port "$PORT"
-	  --long_prefill_token_threshold 8192
+	  --long_prefill_token_threshold "$MAX_NUM_BATCHED_TOKENS"
 	  --max_num_batched_tokens "$MAX_NUM_BATCHED_TOKENS"
 	  --max-model-len "$MAX_MODEL_LEN"
 	  --max-num-seqs "$MAX_NUM_SEQS"

@@ -12,13 +12,17 @@ bash "$BASH_DIR/gen_prefiller_configs.sh" 192.168.100.191 0 8 "$BASH_DIR"
 
 BASE_HTTP_PORT=8300
 
-for i in $(seq 0 7); do
+MLX5_DEVICES=(mlx5_0 mlx5_3 mlx5_4 mlx5_5 mlx5_6 mlx5_7 mlx5_8 mlx5_9)
+MLX5_DEVICES=(mlx5_0 mlx5_0 mlx5_0 mlx5_0 mlx5_6 mlx5_7 mlx5_8 mlx5_9)
+
+for i in $(seq 0 3); do
     GLOBAL_ID=$i
     PREFILL_IP="192.168.100.$((191 + i))"
 
     echo "====== Starting prefiller instance $i (IP: ${PREFILL_IP}, HTTP: $((BASE_HTTP_PORT + i))) ======"
 
     HABANA_VISIBLE_DEVICES=$i \
+    UCX_NET_DEVICES="${MLX5_DEVICES[$i]}:1" \
     LMCACHE_CONFIG_FILE="${BASH_DIR}/lmcache-prefiller-config${GLOBAL_ID}.yaml" \
     bash "$BASH_DIR/disaggregated_prefill_server_launcher.sh" \
       -m /mnt/disk2/hf_models/DeepSeek-V2-Lite-Chat/ \
@@ -27,12 +31,14 @@ for i in $(seq 0 7); do
       --base-port "$((BASE_HTTP_PORT + i))" \
       --node-rank 0 \
       --node-size 1 \
-      --max-model-len 4096 \
-      --max-num-batched-tokens 4096 \
-      --max-num-seqs 128 \
-      --gpu-memory-utilization 0.8 \
+      --max-model-len 16384 \
+      --max-num-batched-tokens 16384 \
+      --max-num-seqs 1 \
+      --gpu-memory-utilization 0.6 \
       --no-ep \
+      --warmup \
       --nixl-buffer-device hpu \
+      --recipe-cache \
       --kv-connector lmcache &
 
     sleep 2

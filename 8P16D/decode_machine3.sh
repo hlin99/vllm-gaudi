@@ -26,9 +26,9 @@ for i in $(seq 0 7); do
       --base-port "$((BASE_HTTP_PORT + i))" \
       --node-rank 1 \
       --node-size 2 \
-      --max-model-len 4096 \
-      --max-num-batched-tokens 4096 \
-      --max-num-seqs 128 \
+      --max-model-len 8192 \
+      --max-num-batched-tokens 8192 \
+      --max-num-seqs 64 \
       --gpu-memory-utilization 0.8 \
       --no-ep \
       --nixl-buffer-device hpu \
